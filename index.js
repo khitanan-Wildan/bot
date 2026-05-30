@@ -29,11 +29,16 @@ const client = new Client({
             '--disable-dev-shm-usage',
             '--disable-gpu',
             '--disable-web-security',
-            '--window-size=1280,720'
+            '--window-size=1280,720',
+            // --- TAMBAHAN ARGS BIAR TIDAK GAGAL TAUTKAN ---
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-extensions'
         ],
-        timeout: 120000
+        // Menaikkan timeout ke 3 menit agar server punya waktu lebih untuk proses pairing awal
+        timeout: 180000 
     }
-});
 
 console.log('BOT STARTING...');
 
