@@ -85,9 +85,8 @@ client.on('message_create', async (msg) => {
 
             let foundServer = null;
             let foundUserObj = null;
-            let mac = 'Any';
+            let rawMac = 'Any';
 
-            // Looping menyisir semua server MikroTik yang terdaftar di config
             for (const key in config.servers) {
                 const server = config.servers[key];
                 const mtConfig = {
@@ -95,7 +94,7 @@ client.on('message_create', async (msg) => {
                     port: server.mikrotik.port,
                     user: server.mikrotik.user || config.defaultMikrotik.user,
                     password: server.mikrotik.pass || config.defaultMikrotik.pass,
-                    timeout: 4000 // timeout cepat agar tidak macet lama
+                    timeout: 4000
                 };
 
                 const api = new RouterOSAPI(mtConfig);
@@ -107,15 +106,15 @@ client.on('message_create', async (msg) => {
                     if (userObj) {
                         foundServer = server;
                         foundUserObj = userObj;
-                        mac = userObj['caller-id'] || 'Any';
+                        rawMac = userObj['caller-id'] || 'Any';
 
                         const activeUsers = await api.write('/ppp/active/print');
                         const activeUser = activeUsers.find(x => x.name && x.name.trim().toLowerCase() === username.trim().toLowerCase());
                         if (activeUser) {
-                            mac = activeUser['caller-id'] || mac;
+                            rawMac = activeUser['caller-id'] || rawMac;
                         }
                         await api.close();
-                        break; // Stop loop jika user sudah ketemu di salah satu cabang
+                        break;
                     }
                     await api.close();
                 } catch (e) {
@@ -128,15 +127,18 @@ client.on('message_create', async (msg) => {
                 return;
             }
 
-            if (!mac || mac === 'Any') {
+            if (!rawMac || rawMac === 'Any') {
                 msg.reply(`⚠️ User ketemu di server *${foundServer.label}*, tetapi MAC Address tidak terbaca (Router pelanggan kemungkinan mati).`);
                 return;
             }
 
-            msg.reply(`📡 User ditemukan di *${foundServer.label}*\n🔒 MAC: *${mac}*\n_Sedang menyisir seluruh OLT di cabang tersebut..._`);
+            // PROSES POTONG 1 KARAKTER TERAKHIR (Dari 17 menjadi 16 karakter)
+            const mac = rawMac.trim().substring(0, 16);
+
+            msg.reply(`📡 User ditemukan di *${foundServer.label}*\n🔒 MAC Asli: *${rawMac}*\n✂️ MAC OLT (16 Karakter): *${mac}*\n_Sedang menyisir seluruh OLT di cabang tersebut..._`);
 
             const hasilOlt = await scanSemuaOlt(foundServer.olts, mac);
-            msg.reply(`📊 *Hasil Cek Redaman OLT*\n\n👤 Pelanggan: ${username}\n💻 Server: ${foundServer.label}\n🔒 MAC Alat: ${mac}\n${hasilOlt}`);
+            msg.reply(`📊 *Hasil Cek Redaman OLT*\n\n👤 Pelanggan: ${username}\n💻 Server: ${foundServer.label}\n🔒 MAC Terpotong: ${mac}\n${hasilOlt}`);
             return;
         }
 
@@ -191,7 +193,6 @@ client.on('message_create', async (msg) => {
             }
 
             try {
-                // Aktifkan akun PPPoE yang ketemu
                 await targetApi.write([
                     '/ppp/secret/set',
                     `=.id=${foundUserObj['.id']}`,
@@ -204,11 +205,11 @@ client.on('message_create', async (msg) => {
                 const activeUser = activeUsers.find(x => x.name && x.name.trim().toLowerCase() === username.trim().toLowerCase());
 
                 let ip = foundUserObj['remote-address'] || 'Dynamic';
-                let mac = foundUserObj['caller-id'] || 'Any';
+                let rawMac = foundUserObj['caller-id'] || 'Any';
 
                 if (activeUser) {
                     ip = activeUser.address || ip;
-                    mac = activeUser['caller-id'] || mac;
+                    rawMac = activeUser['caller-id'] || rawMac;
                 }
 
                 const paket = foundUserObj.profile || 'default';
@@ -220,12 +221,17 @@ client.on('message_create', async (msg) => {
                                     `🛜 Paket: ${paket}\n` +
                                     `💻 Server Lokasi: ${foundServer.label}\n` +
                                     `🌐 IP: ${ip}\n` +
-                                    `🔒 MAC: ${mac}\n`;
+                                    `🔒 MAC Asli: ${rawMac}\n`;
 
-                if (mac && mac !== 'Any') {
+                if (rawMac && rawMac !== 'Any') {
+                    // PROSES POTONG 1 KARAKTER TERAKHIR (Dari 17 menjadi 16 karakter)
+                    const mac = rawMac.trim().substring(0, 16);
+                    reportMessage += `✂️ MAC OLT: ${mac}\n`;
+
                     await msg.reply(reportMessage + `\n🔍 _Menyisir jaringan OLT otomatis di cabang ${foundServer.label}..._`);
+                    
                     const hasilOlt = await scanSemuaOlt(foundServer.olts, mac);
-                    msg.reply(`✨ *RnB Network Final Report*\n\n👤 Pelanggan: ${username}\n💻 Server: ${foundServer.label}\n🔒 MAC Alat: ${mac}\n${hasilOlt}`);
+                    msg.reply(`✨ *RnB Network Final Report*\n\n👤 Pelanggan: ${username}\n💻 Server: ${foundServer.label}\n🔒 MAC Terpotong: ${mac}\n${hasilOlt}`);
                 } else {
                     reportMessage += `\n⚠️ Pengecekan OLT dilewati karena MAC tidak terbaca.`;
                     msg.reply(reportMessage);
