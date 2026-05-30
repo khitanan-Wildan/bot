@@ -22,7 +22,7 @@ const client = new Client({
         dataPath: './session'
     }),
     puppeteer: {
-        // Konfigurasi otomatis untuk mendeteksi Chrome bawaan Railway (Tanpa ExecutablePath kaku)
+        // Konfigurasi otomatis untuk mendeteksi Chrome bawaan Railway
         headless: 'new',
         args: [
             '--no-sandbox',
