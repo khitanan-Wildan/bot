@@ -22,7 +22,7 @@ const client = new Client({
         dataPath: './session'
     }),
     puppeteer: {
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
+        // Konfigurasi otomatis untuk mendeteksi Chrome bawaan Railway (Tanpa ExecutablePath kaku)
         headless: 'new',
         args: [
             '--no-sandbox',
