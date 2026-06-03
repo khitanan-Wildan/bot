@@ -1,4 +1,4 @@
-// index.js - RnBNET BOT (Production Ready)
+// index.js - RnBNET BOT (Public Access Version)
 const path = require('path');
 const express = require('express');
 const qrcode = require('qrcode');
@@ -51,21 +51,7 @@ const client = new Client({
 });
 
 // ==========================================
-// 3. KEAMANAN: DAFTAR NOMOR ADMIN (WHITELIST)
-// ==========================================
-// Format: [nomor_hp]@c.us (tanpa + atau 0 di depan, ganti dengan 62)
-// Contoh: 6281234567890@c.us
-const ADMIN_NUMBERS = [
-    '6281234567890@c.us', // Ganti dengan nomor admin 1
-    '6289876543210@c.us'  // Ganti dengan nomor admin 2
-];
-
-function isAdmin(number) {
-    return ADMIN_NUMBERS.includes(number);
-}
-
-// ==========================================
-// 4. EVENT LISTENER WHATSAPP
+// 3. EVENT LISTENER WHATSAPP
 // ==========================================
 console.log('🤖 BOT STARTING...');
 
@@ -106,7 +92,7 @@ client.on('auth_failure', (msg) => {
 });
 
 // ==========================================
-// 5. HELPER: KONEKSI MIKROTIK
+// 4. HELPER: KONEKSI MIKROTIK
 // ==========================================
 async function connectMikrotik(serverKey) {
     const targetServer = config.servers[serverKey];
@@ -149,7 +135,7 @@ async function getActiveUserFromMikrotik(api, username) {
 }
 
 // ==========================================
-// 6. MESSAGE HANDLER
+// 5. MESSAGE HANDLER (PUBLIC ACCESS - SEMUA BISA PAKAI)
 // ==========================================
 client.on('message_create', async (msg) => {
     try {
@@ -158,7 +144,7 @@ client.on('message_create', async (msg) => {
         const command = args[0]?.toLowerCase();
 
         // ==========================================
-        // PERINTAH PUBLIK (Bisa diakses semua orang)
+        // PERINTAH PUBLIK
         // ==========================================
         if (command === 'ping') {
             await msg.reply('pong 🏓');
@@ -175,22 +161,15 @@ client.on('message_create', async (msg) => {
                 `Format: \`!aktifkan [nama_mikrotik] [username]\`\n` +
                 `Contoh: \`!aktifkan sukamelang budi\`\n\n` +
                 `📍 *PILIHAN MIKROTIK:*\n` +
-                `• panglejar\n• perum\n• cibarola\n• sukamelang\n\n` +
-                `⚠️ _Perintah !cek dan !aktifkan hanya untuk admin_`
+                `• panglejar\n• perum\n• cibarola\n• sukamelang`
             );
             return;
         }
 
         // ==========================================
-        // PERINTAH ADMIN (Hanya bisa diakses admin)
+        // PERINTAH !CEK & !AKTIFKAN (BEBAS DIAKSES)
         // ==========================================
         if (['!cek', '!aktifkan'].includes(command)) {
-            // Cek whitelist admin
-            if (!isAdmin(msg.from)) {
-                await msg.reply('🚫 *Akses Ditolak*\n\nAnda tidak memiliki izin untuk menggunakan perintah ini.\nHubungi admin jika merasa ini kesalahan.');
-                return;
-            }
-
             // Validasi format
             if (args.length < 3) {
                 await msg.reply(`❌ *Format Salah*\n\nGunakan: \`${command} [nama_mikrotik] [username]\`\n\nContoh: \`${command} sukamelang budi\``);
@@ -226,7 +205,7 @@ client.on('message_create', async (msg) => {
 });
 
 // ==========================================
-// 7. HANDLER: CEK REDAMAN
+// 6. HANDLER: CEK REDAMAN
 // ==========================================
 async function handleCekRedaman(msg, serverKey, username) {
     const { api, targetServer } = await connectMikrotik(serverKey);
@@ -275,7 +254,7 @@ async function handleCekRedaman(msg, serverKey, username) {
 }
 
 // ==========================================
-// 8. HANDLER: AKTIVASI (OPEN ISOLIR)
+// 7. HANDLER: AKTIVASI (OPEN ISOLIR)
 // ==========================================
 async function handleAktivasi(msg, serverKey, username) {
     const { api, targetServer } = await connectMikrotik(serverKey);
@@ -350,7 +329,7 @@ async function handleAktivasi(msg, serverKey, username) {
 }
 
 // ==========================================
-// 9. ERROR HANDLING GLOBAL
+// 8. ERROR HANDLING GLOBAL
 // ==========================================
 process.on('unhandledRejection', (err) => {
     console.error('❌ UNHANDLED REJECTION:', err);
@@ -367,7 +346,7 @@ process.on('SIGINT', async () => {
 });
 
 // ==========================================
-// 10. INITIALIZE BOT
+// 9. INITIALIZE BOT
 // ==========================================
 client.initialize().catch(err => {
     console.error('❌ Gagal initialize bot:', err);
