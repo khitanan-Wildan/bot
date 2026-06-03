@@ -1,6 +1,6 @@
 // oltService.js
 const axios = require('axios');
-const crypto = require('crypto'); // Bawaan Node.js untuk MD5
+const crypto = require('crypto');
 
 // ==========================================
 // 1. FUNGSI AUTO-LOGIN HSairpo
@@ -33,14 +33,13 @@ async function getHSAirpoToken(oltConfig) {
     const response = await axios.post(url, payload, {
         headers: {
             'Content-Type': 'application/json;charset=UTF-8',
-            'x-token': 'null' // Sesuai dengan yang dikirim browser
+            'x-token': 'null'
         },
         timeout: 10000
     });
 
     // 5. Cek apakah login sukses (code === 1)
     if (response.data.code === 1) {
-        // Token baru ada di Response Headers!
         const newToken = response.headers['x-token'];
         if (newToken) {
             return newToken;
@@ -60,18 +59,18 @@ async function cekRedamanHSAirpo(oltConfig, mac) {
         // 1. Login otomatis untuk dapat token segar
         const token = await getHSAirpoToken(oltConfig);
 
-        // 2. Kita tidak tahu ONU ada di port berapa, jadi kita scan port 1 sampai 16
+        // 2. Scan port 1 sampai 16 untuk mencari MAC address
         for (let port = 1; port <= 16; port++) {
             const url = `http://${oltConfig.ip}:${oltConfig.port}/onu_allow_list?port_id=${port}`;
             
             const response = await axios.get(url, {
-                headers: { 'x-token': token }, // Gunakan token segar!
+                headers: { 'x-token': token },
                 timeout: 5000
             });
 
             const onuList = response.data.data || [];
             
-            // Cari MAC Address (gunakan startsWith karena format MAC kadang terpotong)
+            // Cari MAC Address
             const found = onuList.find(x => {
                 const macAddr = x.macaddr || x.mac || '';
                 return macAddr.toLowerCase().startsWith(mac.toLowerCase());
@@ -79,8 +78,10 @@ async function cekRedamanHSAirpo(oltConfig, mac) {
 
             // Jika ONU ditemukan di port ini!
             if (found) {
-                // Coba ambil nilai redaman (sesuaikan key jika nanti ketemu key aslinya)
-                let redaman = found.rx_power || found.optical_power || found.rx || found.signal || 'N/A';
+                // ✅ AMBIL NILAI REDAMAN DARI KEY "receive_power"
+                let redaman = found.receive_power || 'N/A';
+                
+                // Tambahkan satuan dBm jika belum ada
                 if (redaman !== 'N/A' && !String(redaman).toLowerCase().includes('dbm')) {
                     redaman = `${redaman} dBm`;
                 }
@@ -89,7 +90,8 @@ async function cekRedamanHSAirpo(oltConfig, mac) {
                     olt_name: `${oltConfig.label} (Port PON ${port})`,
                     mac_onu: found.macaddr,
                     redaman: redaman,
-                    status: found.status || found.online_status || 'Online'
+                    status: found.status || 'Online',
+                    dev_type: found.dev_type || 'Unknown'
                 };
             }
         }
@@ -128,8 +130,9 @@ async function scanSemuaOlt(oltList, mac) {
             hasilAkhir += `\n❌ *${olt.label}*: ${hasil.error}`;
         } else if (hasil) {
             hasilAkhir += `\n✅ *${hasil.olt_name}*` +
-                          `\n   📉 Redaman: ${hasil.redaman}` +
-                          `\n   📡 Status: ${hasil.status}`;
+                          `\n   📉 Redaman: *${hasil.redaman}*` +
+                          `\n   📡 Status: ${hasil.status}` +
+                          `\n   📦 Tipe: ${hasil.dev_type}`;
         }
     }
     
