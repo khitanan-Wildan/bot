@@ -39,10 +39,19 @@ async function cekRedamanHSAirpoAPI(oltConfig, mac) {
 }
 
 // ==========================================
-// 2. HSairpo WEB (Khusus Cibarola)
+// 2. HSairpo WEB (KHUSUS CIBAROLA - Format MAC 1111.1111.1111)
 // ==========================================
 async function cekRedamanHSAirpoWeb(oltConfig, mac) {
-    const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] });
+    // 1. FORMAT MAC MENJADI 1111.1111.1111 (Contoh: a031.db00.dbf1)
+    const cleanMac = mac.replace(/[:.\-]/g, '');
+    const targetMac = cleanMac.match(/.{1,4}/g).join('.');
+
+    // 2. Launch Puppeteer dengan headless: 'new' & defaultViewport: null
+    const browser = await puppeteer.launch({ 
+        headless: 'new', 
+        defaultViewport: null, 
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
+    });
     const page = await browser.newPage();
     const baseUrl = `http://${oltConfig.ip}:${oltConfig.port}`;
 
@@ -65,7 +74,6 @@ async function cekRedamanHSAirpoWeb(oltConfig, mac) {
 
         await page.goto(`${baseUrl}/index.html#/pon/onu/optical`, { waitUntil: 'networkidle2', timeout: 15000 });
         
-        // FALLBACK SELECTOR: Coba beberapa variasi jika satu gagal
         const selectors = ['input[placeholder*="MAC" i]', 'input[placeholder*="mac" i]', 'input[placeholder*="ONU" i]', '.el-input__inner'];
         let searchInput = null;
         for (const sel of selectors) {
@@ -74,7 +82,7 @@ async function cekRedamanHSAirpoWeb(oltConfig, mac) {
                 if (searchInput) break;
             } catch (e) {}
         }
-        if (!searchInput) throw new Error('Kolom pencarian MAC tidak ditemukan. Halaman mungkin belum termuat sempurna.');
+        if (!searchInput) throw new Error('Kolom pencarian MAC tidak ditemukan.');
 
         let rxPowerResult = null;
         for (let i = 1; i <= (oltConfig.total_pon || 4); i++) {
@@ -94,7 +102,8 @@ async function cekRedamanHSAirpoWeb(oltConfig, mac) {
             await new Promise(r => setTimeout(r, 800));
 
             await page.$eval(selectors[0], el => el.value = '');
-            await page.type(selectors[0], mac);
+            // 3. KETIK MAC YANG SUDAH DI-FORMAT (1111.1111.1111)
+            await page.type(selectors[0], targetMac);
 
             await page.evaluate(() => {
                 const icon = document.querySelector('input[placeholder*="MAC" i]')?.nextElementSibling;
@@ -119,12 +128,12 @@ async function cekRedamanHSAirpoWeb(oltConfig, mac) {
                     }
                 }
                 return null;
-            }, mac);
+            }, targetMac);
 
             if (rxPowerResult) break;
         }
 
-        return rxPowerResult ? { olt_name: oltConfig.label, mac_onu: mac, redaman: `${rxPowerResult} dBm`, status: 'Online' } : null;
+        return rxPowerResult ? { olt_name: oltConfig.label, mac_onu: targetMac, redaman: `${rxPowerResult} dBm`, status: 'Online' } : null;
     } catch (error) {
         return { error: `Gagal: ${error.message}` };
     } finally {
@@ -133,10 +142,15 @@ async function cekRedamanHSAirpoWeb(oltConfig, mac) {
 }
 
 // ==========================================
-// 3. Hioso (Cibarola, Perum, Sukamelang)
+// 3. Hioso (Cibarola, Perum, Sukamelang) - FIX leftFrame
 // ==========================================
 async function cekRedamanHioso(oltConfig, mac) {
-    const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] });
+    // Launch dengan headless: 'new' & defaultViewport: null
+    const browser = await puppeteer.launch({ 
+        headless: 'new', 
+        defaultViewport: null, 
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
+    });
     try {
         const page = await browser.newPage();
         const baseUrl = `http://${oltConfig.ip}:${oltConfig.port}`;
@@ -160,20 +174,20 @@ async function cekRedamanHioso(oltConfig, mac) {
             await page.click('input[type="button"]');
             await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 }).catch(() => {});
         }
-        await new Promise(r => setTimeout(r, 3000)); // Jeda ekstra agar frame stabil
+        await new Promise(r => setTimeout(r, 3000));
 
         let targetFrame = page;
         if (oltConfig.iframe) {
-            await new Promise(r => setTimeout(r, 2000));
-            const frames = page.frames();
-            
-            // PENCARIAN FRAME YANG LEBIH PINTAR & TAHAN BANTING
-            let leftFrame = frames.find(f => f.name() === 'leftFrame') || 
-                            frames.find(f => f.name() && f.name().toLowerCase().includes('left')) ||
-                            frames.find(f => f.url() && (f.url().includes('left') || f.url().includes('menu')));
+            // RETRY LOGIC: Tunggu hingga 10 detik untuk menemukan leftFrame
+            let leftFrame = null;
+            for (let i = 0; i < 5; i++) {
+                leftFrame = page.frames().find(f => f.name() === 'leftFrame');
+                if (leftFrame) break;
+                await new Promise(r => setTimeout(r, 2000));
+            }
 
             if (!leftFrame) {
-                throw new Error(`leftFrame tidak ditemukan. Frame tersedia: [${frames.map(f => f.name() || f.url()).join(', ')}]`);
+                throw new Error(`leftFrame tidak ditemukan. Frame: [${page.frames().map(f => f.name() || f.url()).join(', ')}]`);
             }
 
             await leftFrame.evaluate(() => {
@@ -206,9 +220,9 @@ async function cekRedamanHioso(oltConfig, mac) {
         }
 
         const rxPowerResult = await targetFrame.evaluate((macToFind) => {
-            const cleanTarget = macToFind.replace(/[:.-]/g, '').toLowerCase();
+            const cleanTarget = macToFind.replace(/[:.\-]/g, '').toLowerCase();
             for (let row of Array.from(document.querySelectorAll('table tr'))) {
-                if (row.innerText.replace(/[:.-]/g, '').toLowerCase().includes(cleanTarget)) {
+                if (row.innerText.replace(/[:.\-]/g, '').toLowerCase().includes(cleanTarget)) {
                     const match = row.innerText.replace(/\s+/g, ' ').trim().match(/-\d+\.\d+/);
                     return match ? match[0] : 'Tidak Terdeteksi';
                 }
