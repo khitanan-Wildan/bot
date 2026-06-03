@@ -1,14 +1,14 @@
-// oltService.js - FINAL OPTIMIZED VERSION
+// oltService.js - FAST & OPTIMIZED VERSION
 const axios = require('axios');
 const crypto = require('crypto');
 const puppeteer = require('puppeteer');
 
 // ==========================================
-// 1. HSairpo API (Panglejar & Sukamelang)
+// 1. HSairpo API (Panglejar & Sukamelang) - TIDAK DIUBAH
 // ==========================================
 async function cekRedamanHSAirpoAPI(oltConfig, mac) {
     try {
-        const searchMac = mac.substring(0, 16); 
+        const searchMac = mac.substring(0, 16); // POTONG 1 KARAKTER
         const username = oltConfig.user || 'root';
         const password = oltConfig.pass || 'admin';
         const key = crypto.createHash('md5').update(`${username}:${password}`).digest('hex');
@@ -40,12 +40,12 @@ async function cekRedamanHSAirpoAPI(oltConfig, mac) {
 }
 
 // ==========================================
-// 2. HSairpo CIBAROLA (Axios Super Cepat)
+// 2. HSairpo CIBAROLA - TIDAK DIUBAH (Paling Cepat)
 // ==========================================
 async function cekRedamanHSAirpoCibarola(oltConfig, mac) {
     try {
         const cleanTargetMac = mac.replace(/[:.\-]/g, '').toLowerCase();
-        const matchTarget = cleanTargetMac.substring(0, 11);
+        const matchTarget = cleanTargetMac.substring(0, 11); // MAC Full dicocokkan 11 karakter depan
 
         const passwordBase64 = Buffer.from(oltConfig.pass || 'admin').toString('base64');
         const loginRes = await axios.post(
@@ -105,10 +105,10 @@ async function cekRedamanHSAirpoCibarola(oltConfig, mac) {
 }
 
 // ==========================================
-// 3. Hioso (Puppeteer - SINGLE & DOUBLE LOGIN)
+// 3. Hioso (Perum, 4Pon, 8Pon) - OPTIMIZED CEPAT
 // ==========================================
 async function cekRedamanHioso(oltConfig, mac) {
-    const searchMac = mac.substring(0, 16); // Aturan potong 1 karakter untuk Hioso
+    const searchMac = mac.substring(0, 16); // POTONG 1 KARAKTER SESUAI PERMINTAAN
     const browser = await puppeteer.launch({
         headless: 'new',
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
@@ -116,7 +116,7 @@ async function cekRedamanHioso(oltConfig, mac) {
     
     try {
         const page = await browser.newPage();
-        // Set timeout ketat agar tidak macet
+        // Set timeout ketat agar tidak macet & cepat
         page.setDefaultTimeout(8000);
         page.setDefaultNavigationTimeout(8000);
 
@@ -126,25 +126,27 @@ async function cekRedamanHioso(oltConfig, mac) {
         let targetFrame = page;
 
         if (oltConfig.iframe) {
-            // === LOGIKA DOUBLE LOGIN (Cibarola & 8Pon Sukamelang) ===
+            // === LOGIKA 8 PON SUKAMELANG (Double Login + Iframe) ===
             await page.authenticate({ username: user, password: pass }).catch(() => {});
             await page.goto(baseUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
 
             // Login 1
             if (await page.$('#a')) {
-                await page.type('#a', user); await page.type('#b', pass);
-                await page.click('input[type="button"]');
+                await page.type('#a', user).catch(()=>{});
+                await page.type('#b', pass).catch(()=>{});
+                await page.click('input[type="button"]').catch(()=>{});
                 await page.waitForNavigation({ waitUntil: 'domcontentloaded' }).catch(() => {});
             }
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 800)); // Jeda singkat
 
             // Login 2
             if (await page.$('#a')) {
-                await page.type('#a', user); await page.type('#b', pass);
-                await page.click('input[type="button"]');
+                await page.type('#a', user).catch(()=>{});
+                await page.type('#b', pass).catch(()=>{});
+                await page.click('input[type="button"]').catch(()=>{});
                 await page.waitForNavigation({ waitUntil: 'domcontentloaded' }).catch(() => {});
             }
-            await new Promise(r => setTimeout(r, 1500));
+            await new Promise(r => setTimeout(r, 800));
 
             // Navigasi Iframe
             let leftFrame = page.frames().find(f => f.name() === 'leftFrame' || f.name()?.toLowerCase().includes('left'));
@@ -154,7 +156,7 @@ async function cekRedamanHioso(oltConfig, mac) {
                     const link = links.find(l => l.innerText.trim() === 'All ONU' || l.innerText.trim() === 'All ONUs');
                     if (link) link.click();
                 }).catch(() => {});
-                await new Promise(r => setTimeout(r, 2000));
+                await new Promise(r => setTimeout(r, 1500));
             }
 
             targetFrame = page.frames().find(f => f.name() === 'mainFrame' || f.name()?.toLowerCase().includes('main')) || page;
@@ -163,26 +165,27 @@ async function cekRedamanHioso(oltConfig, mac) {
             await targetFrame.evaluate(() => {
                 if (typeof setNumPerPage === 'function') setNumPerPage(300);
             }).catch(() => {});
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, 1500));
 
         } else {
-            // === LOGIKA SINGLE LOGIN (Perum & 4Pon Sukamelang) ===
+            // === LOGIKA PERUM & 4 PON SUKAMELANG (Single Login + Direct URL) ===
             await page.goto(baseUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
 
             // Login 1x Saja
             if (await page.$('#a')) {
-                await page.type('#a', user); await page.type('#b', pass);
-                await page.click('input[type="button"]');
+                await page.type('#a', user).catch(()=>{});
+                await page.type('#b', pass).catch(()=>{});
+                await page.click('input[type="button"]').catch(()=>{});
                 await page.waitForNavigation({ waitUntil: 'domcontentloaded' }).catch(() => {});
             }
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 800));
 
             // Langsung ke halaman ONU (Tanpa Iframe)
             await page.goto(`${baseUrl}/m/onu_all_onu.htm`, { waitUntil: 'domcontentloaded' }).catch(() => {});
             targetFrame = page; 
         }
 
-        // Ekstraksi Data (Sama untuk keduanya)
+        // Ekstraksi Data Redaman
         const rxPowerResult = await targetFrame.evaluate((macToFind) => {
             const cleanTarget = macToFind.replace(/[:.\-]/g, '').toLowerCase();
             const rows = Array.from(document.querySelectorAll('table tr'));
@@ -203,15 +206,16 @@ async function cekRedamanHioso(oltConfig, mac) {
     } catch (error) {
         return { error: `Timeout/Gagal` };
     } finally {
-        // WAJIB: Tutup browser agar tidak membebani memori
+        // WAJIB: Tutup browser agar memori lega & bot cepat
         await browser.close().catch(() => {});
     }
 }
 
 // ==========================================
-// 4. SCAN PARALLEL (Agar Bot Cepat & Tidak Macet)
+// 4. SCAN PARALLEL (Agar Bot Sangat Cepat)
 // ==========================================
 async function scanSemuaOlt(oltList, mac) {
+    // Jalankan semua OLT secara PARALLEL (Bersamaan)
     const promises = oltList.map(async (olt) => {
         let hasil = null;
         
@@ -223,9 +227,9 @@ async function scanSemuaOlt(oltList, mac) {
         }
 
         if (hasil && !hasil.error) {
-            return `\n✅ *${hasil.olt_name}*\n   📉 Redaman: *${hasil.redaman}*\n    Status: ${hasil.status}`;
+            return `\n✅ *${hasil.olt_name}*\n   📉 Redaman: *${hasil.redaman}*\n   📡 Status: ${hasil.status}`;
         } else if (hasil && hasil.error) {
-            return `\n⚠️ *${olt.label}*: ${hasil.error}`;
+            return `\n️ *${olt.label}*: ${hasil.error}`;
         }
         return null;
     });
