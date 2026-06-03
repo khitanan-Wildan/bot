@@ -46,7 +46,7 @@ module.exports = {
         // ==========================================
         // 3. CIBAROLA
         // ==========================================
-        cibarola: {
+                cibarola: {
             label: 'Cibarola',
             mikrotik: { host: '103.191.165.115', port: 3155, user: 'berry', pass: 'subang21' },
             olts: [
@@ -66,8 +66,8 @@ module.exports = {
                     port: 704,
                     user: 'admin',
                     pass: 'admin',
-                    method: 'puppeteer', // <-- FLAG KHUSUS: Gunakan metode browser (file sempurna Anda)
-                    total_pon: 4        // <-- Jumlah port PON yang discan (pon1 - pon4)
+                    method: 'cibarola', // <-- UBAH DARI 'puppeteer' MENJADI 'cibarola'
+                    total_pon: 4
                 }
             ]
         },
