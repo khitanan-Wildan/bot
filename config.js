@@ -1,8 +1,7 @@
 // config.js
 module.exports = {
-    // Konfigurasi default (fallback jika tidak diisi di server spesifik)
     defaultMikrotik: {
-        timeout: 15 // Timeout koneksi dalam detik
+        timeout: 15
     },
 
     servers: {
@@ -11,69 +10,98 @@ module.exports = {
         // ==========================================
         panglejar: {
             label: 'Panglejar',
-            mikrotik: {
-                host: '103.191.165.115',
-                port: 705,
-                user: 'berry',
-                pass: 'subang21'
-            },
+            mikrotik: { host: '103.191.165.115', port: 705, user: 'berry', pass: 'subang21' },
             olts: [
                 {
                     type: 'HSAirpo',
                     label: 'HSAirpo Panglejar',
                     ip: '103.191.165.115',
                     port: 710,
-                    user: 'root',      // Username login web HSAirpo (sesuaikan jika bukan 'root')
-                    pass: 'admin'      // Password login web HSAirpo (sesuaikan jika bukan 'admin')
+                    user: 'root',
+                    pass: 'admin'
                 }
             ]
         },
 
         // ==========================================
-        // 2. PERUM (Contoh, silakan diisi jika ada)
+        // 2. PERUM
         // ==========================================
         perum: {
             label: 'Perum',
-            mikrotik: {
-                host: 'IP_MIKROTIK_PERUM',
-                port: 8728,
-                user: 'user_perum',
-                pass: 'pass_perum'
-            },
+            mikrotik: { host: '103.191.165.38', port: 8725, user: 'berry', pass: 'subang21' },
             olts: [
-                // Tambahkan daftar OLT di Perum di sini
+                {
+                    type: 'Hioso',
+                    label: 'Hioso Perum',
+                    ip: '103.191.165.38',
+                    port: 8422,
+                    user: 'admin',
+                    pass: 'admin',
+                    iframe: false // Metode langsung ke /m/onu_all_onu.htm
+                }
             ]
         },
 
         // ==========================================
-        // 3. CIBAROLA (Contoh, silakan diisi jika ada)
+        // 3. CIBAROLA
         // ==========================================
         cibarola: {
             label: 'Cibarola',
-            mikrotik: {
-                host: 'IP_MIKROTIK_CIBAROLA',
-                port: 8728,
-                user: 'user_cibarola',
-                pass: 'pass_cibarola'
-            },
+            mikrotik: { host: '103.191.165.115', port: 3155, user: 'berry', pass: 'subang21' },
             olts: [
-                // Tambahkan daftar OLT di Cibarola di sini
+                {
+                    type: 'Hioso',
+                    label: 'Hioso Cibarola',
+                    ip: '103.191.165.115',
+                    port: 655,
+                    user: 'admin',
+                    pass: 'admin',
+                    iframe: true // Metode navigasi via leftFrame -> mainFrame
+                },
+                {
+                    type: 'HSAirpo',
+                    label: 'HSAirpo Cibarola',
+                    ip: '103.191.165.115',
+                    port: 704,
+                    user: 'admin',
+                    pass: 'admin'
+                }
             ]
         },
 
         // ==========================================
-        // 4. SUKAMELANG (Contoh, silakan diisi jika ada)
+        // 4. SUKAMELANG (LENGKAP: 3 OLT)
         // ==========================================
         sukamelang: {
             label: 'Sukamelang',
-            mikrotik: {
-                host: 'IP_MIKROTIK_SUKAMELANG',
-                port: 8728,
-                user: 'user_sukamelang',
-                pass: 'pass_sukamelang'
-            },
+            mikrotik: { host: '103.191.165.126', port: 8728, user: 'berry', pass: 'Subang21' },
             olts: [
-                // Tambahkan daftar OLT di Sukamelang di sini
+                {
+                    type: 'Hioso',
+                    label: 'Hioso 8Pon Sukamelang',
+                    ip: '103.191.165.126',
+                    port: 680,
+                    user: 'admin',
+                    pass: 'admin',
+                    iframe: true // Metode navigasi via leftFrame -> mainFrame
+                },
+                {
+                    type: 'Hioso',
+                    label: 'Hioso 4Pon Sukamelang', // <-- INI YANG BARU DITAMBAHKAN
+                    ip: '103.191.165.126',
+                    port: 670,
+                    user: 'admin',
+                    pass: 'admin',
+                    iframe: false // Metode langsung ke /m/onu_all_onu.htm (sama seperti Perum)
+                },
+                {
+                    type: 'HSAirpo',
+                    label: 'HSAirpo Sukamelang',
+                    ip: '103.191.165.126',
+                    port: 9900,
+                    user: 'root',
+                    pass: 'admin'
+                }
             ]
         }
     }
