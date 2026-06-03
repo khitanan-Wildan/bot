@@ -52,9 +52,14 @@ async function cekRedamanHSAirpoAPI(oltConfig, mac) {
 // ATURAN: MAC FULL tanpa dipotong, format jadi 1111.1111.1111
 // ==========================================
 async function cekRedamanHSAirpoWeb(oltConfig, mac) {
-    // FORMAT MAC FULL: Hapus semua tanda baca, lalu kelompokkan per 4 karakter
+    // === TAMBAHKAN 4 BARIS INI UNTUK DEBUG ===
+    console.log('=========================================');
+    console.log('🔍 [DEBUG CIBAROLA] MAC Mentah dari Bot:', mac);
     const cleanMac = mac.replace(/[:.\-]/g, '').toLowerCase();
     const targetMac = cleanMac.match(/.{1,4}/g)?.join('.') || cleanMac;
+    console.log('⌨️ [DEBUG CIBAROLA] MAC yang akan diketik ke OLT:', targetMac);
+    console.log('=========================================');
+    // ================================================
 
     const browser = await puppeteer.launch({
         headless: 'new',
