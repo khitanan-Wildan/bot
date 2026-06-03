@@ -4,9 +4,9 @@ const crypto = require('crypto');
 const puppeteer = require('puppeteer');
 
 // ==========================================
-// 1. FUNGSI CEK REDAMAN HSairpo (Metode API / Axios)
+// 1. FUNGSI CEK REDAMAN HSairpo (Metode API - Untuk Panglejar & Sukamelang)
 // ==========================================
-async function cekRedamanHSAirpo(oltConfig, mac) {
+async function cekRedamanHSAirpoAPI(oltConfig, mac) {
     try {
         const username = oltConfig.user || 'root';
         const password = oltConfig.pass || 'admin';
@@ -57,13 +57,135 @@ async function cekRedamanHSAirpo(oltConfig, mac) {
         }
         return null;
     } catch (error) {
-        console.error(`[ERROR HSAirpo ${oltConfig.label}]:`, error.message);
+        console.error(`[ERROR HSAirpo API ${oltConfig.label}]:`, error.message);
         return { error: `Gagal: ${error.message}` };
     }
 }
 
 // ==========================================
-// 2. FUNGSI CEK REDAMAN Hioso (Metode Puppeteer - FIXED)
+// 2. FUNGSI CEK REDAMAN HSairpo (Metode Web/Puppeteer - KHUSUS CIBAROLA)
+// Berdasarkan file OLT_HSAirpo_Cibarola.js yang sudah terbukti sempurna
+// ==========================================
+async function cekRedamanHSAirpoWeb(oltConfig, mac) {
+    const browser = await puppeteer.launch({
+        headless: 'new',
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+    });
+    const page = await browser.newPage();
+    const baseUrl = `http://${oltConfig.ip}:${oltConfig.port}`;
+
+    try {
+        await page.goto(`${baseUrl}/index.html`, { waitUntil: 'networkidle2' });
+        await new Promise(r => setTimeout(r, 3000));
+
+        // 1. PROSES LOGIN
+        const inputs = await page.$$('input');
+        if (inputs.length >= 2) {
+            await inputs[0].click({ clickCount: 3 });
+            await inputs[0].type(oltConfig.user || 'admin');
+            await inputs[1].click({ clickCount: 3 });
+            await inputs[1].type(oltConfig.pass || 'admin');
+
+            await page.evaluate(() => {
+                const buttons = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"]'));
+                const loginBtn = buttons.find(b => {
+                    const txt = (b.innerText || b.value || '').toLowerCase().trim();
+                    return txt.includes('log') || txt.includes('sign') || txt.includes('masuk') || txt === '确定';
+                });
+                if (loginBtn) loginBtn.click();
+                else if (buttons.length > 0) buttons[0].click();
+            });
+            await page.waitForNavigation({ waitUntil: 'networkidle2' }).catch(() => {});
+        }
+        await new Promise(r => setTimeout(r, 3000));
+
+        // 2. NAVIGASI KE TAB OPTICAL
+        await page.goto(`${baseUrl}/index.html#/pon/onu/optical`, { waitUntil: 'networkidle2' });
+        const searchInputSelector = 'input[placeholder*="MAC "]';
+        await page.waitForSelector(searchInputSelector, { timeout: 10000 }).catch(() => {});
+
+        let rxPowerResult = null;
+        const totalPonPorts = oltConfig.total_pon || 4;
+
+        // 3. LOOPING SCANNING PORT PON
+        for (let i = 1; i <= totalPonPorts; i++) {
+            const currentPon = `pon${i}`;
+
+            // A. Klik dropdown PON
+            await page.evaluate(() => {
+                const dropdownInput = document.querySelector('.el-input__inner') || document.querySelector('input[readonly]');
+                if (dropdownInput) dropdownInput.click();
+            });
+            await new Promise(r => setTimeout(r, 500));
+
+            // B. Pilih opsi PON dari daftar
+            await page.evaluate((ponName) => {
+                const items = Array.from(document.querySelectorAll('.el-select-dropdown__item, li'));
+                const targetItem = items.find(el => el.innerText.trim().toLowerCase() === ponName);
+                if (targetItem) targetItem.click();
+            }, currentPon);
+            await new Promise(r => setTimeout(r, 500));
+
+            // C. Masukkan MAC ke kolom pencarian
+            await page.$eval(searchInputSelector, el => el.value = ''); 
+            await page.type(searchInputSelector, mac);
+
+            // D. Klik ikon kaca pembesar (Search)
+            await page.evaluate(() => {
+                const searchIcon = document.querySelector('input[placeholder*="MAC "]').nextElementSibling;
+                if (searchIcon) {
+                    searchIcon.click();
+                } else {
+                    const btns = Array.from(document.querySelectorAll('button, i, span'));
+                    const searchBtn = btns.find(b => b.className && b.className.includes('search'));
+                    if (searchBtn) searchBtn.click();
+                }
+            });
+            await new Promise(r => setTimeout(r, 2000));
+
+            // E. Cek apakah MAC ada di tabel
+            rxPowerResult = await page.evaluate((macToFind) => {
+                const cleanTarget = macToFind.replace(/[:.-]/g, '').toLowerCase();
+                const rows = Array.from(document.querySelectorAll('table tr'));
+
+                for (let row of rows) {
+                    const cleanRowText = row.innerText.replace(/[:.-]/g, '').toLowerCase();
+                    if (cleanRowText.includes(cleanTarget)) {
+                        const cells = Array.from(row.querySelectorAll('td'));
+                        // Ambil Kolom ke-5 (Rx-power(dBm))
+                        if (cells.length >= 6) {
+                            const val = cells[5].innerText.trim();
+                            if (val && val !== '-') return val;
+                        }
+                    }
+                }
+                return null;
+            }, mac);
+
+            // F. Jika ketemu, hentikan loop
+            if (rxPowerResult) break;
+        }
+
+        if (rxPowerResult) {
+            return {
+                olt_name: oltConfig.label,
+                mac_onu: mac,
+                redaman: `${rxPowerResult} dBm`,
+                status: 'Online'
+            };
+        }
+        return null;
+
+    } catch (error) {
+        console.error(`[ERROR HSAirpo Web ${oltConfig.label}]:`, error.message);
+        return { error: `Gagal: ${error.message}` };
+    } finally {
+        await browser.close();
+    }
+}
+
+// ==========================================
+// 3. FUNGSI CEK REDAMAN Hioso (Metode Puppeteer - Double Login & Iframe)
 // ==========================================
 async function cekRedamanHioso(oltConfig, mac) {
     const browser = await puppeteer.launch({ 
@@ -77,13 +199,10 @@ async function cekRedamanHioso(oltConfig, mac) {
         const user = oltConfig.user || 'admin';
         const pass = oltConfig.pass || 'admin';
 
-        // 1. HTTP BASIC AUTH (Wajib ada di awal untuk Cibarola & Sukamelang 8Pon)
         await page.authenticate({ username: user, password: pass });
-
-        // 2. Buka Halaman Utama
         await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 15000 });
 
-        // 3. Login Form 1
+        // Login Form 1
         const isLoginPage = await page.$('#a');
         if (isLoginPage) {
             await page.type('#a', user);
@@ -93,7 +212,7 @@ async function cekRedamanHioso(oltConfig, mac) {
         }
         await new Promise(r => setTimeout(r, 2000));
 
-        // 4. Login Form 2 (Double Login Bypass)
+        // Login Form 2 (Double Login Bypass)
         const isLogin2Page = await page.$('#a');
         if (isLogin2Page) {
             await page.type('#a', user);
@@ -105,7 +224,7 @@ async function cekRedamanHioso(oltConfig, mac) {
 
         let targetFrame = page;
 
-        // 5. Navigasi Iframe (Khusus Cibarola & Sukamelang 8Pon)
+        // Navigasi Iframe (Khusus Cibarola & Sukamelang 8Pon)
         if (oltConfig.iframe) {
             const leftFrame = page.frames().find(f => f.name() === 'leftFrame');
             if (!leftFrame) throw new Error('leftFrame tidak ditemukan.');
@@ -115,26 +234,21 @@ async function cekRedamanHioso(oltConfig, mac) {
                 const allOnuLink = links.find(link => link.innerText.trim() === 'All ONU');
                 if (allOnuLink) allOnuLink.click();
             });
-
             await new Promise(r => setTimeout(r, 4000));
 
             targetFrame = page.frames().find(f => f.name() === 'mainFrame');
             if (!targetFrame) throw new Error('mainFrame tidak ditemukan.');
 
-            // Trick: Paksa OLT menampilkan 300 baris sekaligus (Bypass Pagination)
             await targetFrame.evaluate(() => {
                 if (typeof setNumPerPage === 'function') setNumPerPage(300);
                 else if (typeof OnPageSizeChange === 'function') OnPageSizeChange(300);
             }).catch(() => {});
-
-            await new Promise(r => setTimeout(r, 5000)); // Tunggu tabel reload
+            await new Promise(r => setTimeout(r, 5000));
         } else {
-            // Metode Langsung (Perum & Sukamelang 4Pon)
             await page.goto(`${baseUrl}/m/onu_all_onu.htm`, { waitUntil: 'networkidle2', timeout: 15000 });
             await targetFrame.waitForSelector('table', { timeout: 10000 });
         }
 
-        // 6. Ekstraksi Data Redaman (Regex: -XX.XX)
         const rxPowerResult = await targetFrame.evaluate((macToFind) => {
             const cleanTarget = macToFind.replace(/[:.-]/g, '').toLowerCase();
             const rows = Array.from(document.querySelectorAll('table tr'));
@@ -159,19 +273,18 @@ async function cekRedamanHioso(oltConfig, mac) {
                 status: 'Online'
             };
         }
-        
-        return null; // Tidak ditemukan
+        return null;
 
     } catch (error) {
         console.error(`[ERROR Hioso ${oltConfig.label}]:`, error.message);
         return { error: `Gagal: ${error.message}` };
     } finally {
-        await browser.close(); // Pastikan browser selalu ditutup
+        await browser.close();
     }
 }
 
 // ==========================================
-// 3. FUNGSI SCAN SEMUA OLT (Router Utama)
+// 4. FUNGSI SCAN SEMUA OLT (Router Utama)
 // ==========================================
 async function scanSemuaOlt(oltList, mac) {
     let hasilAkhir = '';
@@ -180,7 +293,12 @@ async function scanSemuaOlt(oltList, mac) {
         let hasil = null;
         
         if (olt.type === 'HSAirpo') {
-            hasil = await cekRedamanHSAirpo(olt, mac);
+            // Gunakan metode Web/Puppeteer jika di-flag di config, jika tidak gunakan API
+            if (olt.method === 'puppeteer') {
+                hasil = await cekRedamanHSAirpoWeb(olt, mac);
+            } else {
+                hasil = await cekRedamanHSAirpoAPI(olt, mac);
+            }
         } else if (olt.type === 'Hioso') {
             hasil = await cekRedamanHioso(olt, mac);
         }
