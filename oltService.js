@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const puppeteer = require('puppeteer');
 
 // ==========================================
-// 1. HSairpo API (Panglejar & Sukamelang) - TIDAK DIUBAH
+// 1. HSairpo API (Panglejar & Sukamelang)
 // ==========================================
 async function cekRedamanHSAirpoAPI(oltConfig, mac) {
     try {
@@ -39,15 +39,15 @@ async function cekRedamanHSAirpoAPI(oltConfig, mac) {
 }
 
 // ==========================================
-// 2. HSairpo WEB (KHUSUS CIBAROLA - LOGIKA CMD YANG SUKSES)
+// 2. HSairpo WEB (KHUSUS CIBAROLA - Format MAC 1111.1111.1111)
 // ==========================================
 async function cekRedamanHSAirpoWeb(oltConfig, mac) {
-    // 1. Format MAC menjadi 1111.1111.1111 (contoh: 2841.ecff.9a20)
+    // 1. Format MAC menjadi 1111.1111.1111 (contoh: a031.db00.dbf1)
     const cleanMac = mac.replace(/[:.\-]/g, '').toLowerCase();
-    const targetMac = cleanMac.match(/.{1,4}/g).join('.');
+    const targetMac = cleanMac.match(/.{1,4}/g)?.join('.') || cleanMac;
 
     const browser = await puppeteer.launch({
-        headless: 'new', // Menghilangkan warning
+        headless: 'new',
         defaultViewport: { width: 1280, height: 720 },
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     });
@@ -76,7 +76,7 @@ async function cekRedamanHSAirpoWeb(oltConfig, mac) {
         await new Promise(r => setTimeout(r, 3000));
 
         await page.goto(`${baseUrl}/index.html#/pon/onu/optical`, { waitUntil: 'networkidle2' });
-        await new Promise(r => setTimeout(r, 4000)); // Jeda agar Vue.js render sempurna
+        await new Promise(r => setTimeout(r, 4000)); 
 
         const possibleSelectors = ['input[placeholder*="MAC" i]', 'input[placeholder*="mac" i]', 'input[placeholder*="ONU" i]', '.el-input__inner'];
         let searchInput = null;
@@ -111,7 +111,7 @@ async function cekRedamanHSAirpoWeb(oltConfig, mac) {
             await new Promise(r => setTimeout(r, 500));
 
             await page.$eval(usedSelector, el => el.value = '');
-            await page.type(usedSelector, targetMac); // Ketik MAC format 1111.1111.1111
+            await page.type(usedSelector, targetMac); 
 
             await page.evaluate(() => {
                 const searchIcon = document.querySelector('input[placeholder*="MAC" i]')?.nextElementSibling;
@@ -150,7 +150,7 @@ async function cekRedamanHSAirpoWeb(oltConfig, mac) {
 }
 
 // ==========================================
-// 3. Hioso (Cibarola, Perum, Sukamelang) - TIDAK DIUBAH (SUDAH SUKSES)
+// 3. Hioso (Cibarola, Perum, Sukamelang) - FRAME DETECTION DIPERBAIKI
 // ==========================================
 async function cekRedamanHioso(oltConfig, mac) {
     const browser = await puppeteer.launch({ 
@@ -185,38 +185,50 @@ async function cekRedamanHioso(oltConfig, mac) {
 
         let targetFrame = page;
         if (oltConfig.iframe) {
+            // PENCARIAN FRAME LEBIH PINTAR: Cari berdasarkan nama ATAU url yang mengandung 'left'
             let leftFrame = null;
             for (let i = 0; i < 5; i++) {
-                leftFrame = page.frames().find(f => f.name() === 'leftFrame');
+                leftFrame = page.frames().find(f => 
+                    f.name() === 'leftFrame' || 
+                    (f.name() && f.name().toLowerCase().includes('left')) ||
+                    (f.url() && f.url().toLowerCase().includes('left'))
+                );
                 if (leftFrame) break;
                 await new Promise(r => setTimeout(r, 2000));
             }
-            if (!leftFrame) throw new Error('leftFrame tidak ditemukan.');
 
-            await leftFrame.evaluate(() => {
-                const links = Array.from(document.querySelectorAll('a'));
-                const allOnuLink = links.find(link => link.innerText.trim() === 'All ONU' || link.innerText.trim() === 'All ONUs');
-                if (allOnuLink) allOnuLink.click();
-                else {
-                    const onuLink = links.find(link => link.innerText.toLowerCase().includes('onu'));
-                    if (onuLink) onuLink.click();
-                }
-            });
-            await new Promise(r => setTimeout(r, 4000));
+            if (!leftFrame) {
+                // Fallback: Jika tetap tidak ketemu, gunakan page utama saja (mencegah crash)
+                console.warn(`[WARNING] leftFrame tidak ditemukan di ${oltConfig.label}, menggunakan halaman utama.`);
+                targetFrame = page;
+            } else {
+                await leftFrame.evaluate(() => {
+                    const links = Array.from(document.querySelectorAll('a'));
+                    const allOnuLink = links.find(link => link.innerText.trim() === 'All ONU' || link.innerText.trim() === 'All ONUs');
+                    if (allOnuLink) allOnuLink.click();
+                    else {
+                        const onuLink = links.find(link => link.innerText.toLowerCase().includes('onu'));
+                        if (onuLink) onuLink.click();
+                    }
+                });
+                await new Promise(r => setTimeout(r, 4000));
 
-            targetFrame = page.frames().find(f => f.name() === 'mainFrame') ||
-                          page.frames().find(f => f.name() && f.name().toLowerCase().includes('main')) ||
-                          page.frames().find(f => f.url() && f.url().includes('onu')) || page;
+                targetFrame = page.frames().find(f => 
+                    f.name() === 'mainFrame' || 
+                    (f.name() && f.name().toLowerCase().includes('main')) ||
+                    (f.url() && f.url().toLowerCase().includes('onu'))
+                ) || page;
 
-            await targetFrame.evaluate(() => {
-                if (typeof setNumPerPage === 'function') setNumPerPage(300);
-                else if (typeof OnPageSizeChange === 'function') OnPageSizeChange(300);
-                else {
-                    const sel = document.querySelector('select');
-                    if (sel) { sel.value = sel.options[sel.options.length - 1].value; sel.dispatchEvent(new Event('change')); }
-                }
-            }).catch(() => {});
-            await new Promise(r => setTimeout(r, 5000));
+                await targetFrame.evaluate(() => {
+                    if (typeof setNumPerPage === 'function') setNumPerPage(300);
+                    else if (typeof OnPageSizeChange === 'function') OnPageSizeChange(300);
+                    else {
+                        const sel = document.querySelector('select');
+                        if (sel) { sel.value = sel.options[sel.options.length - 1].value; sel.dispatchEvent(new Event('change')); }
+                    }
+                }).catch(() => {});
+                await new Promise(r => setTimeout(r, 5000));
+            }
         } else {
             await page.goto(`${baseUrl}/m/onu_all_onu.htm`, { waitUntil: 'networkidle2', timeout: 15000 });
             await targetFrame.waitForSelector('table', { timeout: 10000 });
@@ -254,8 +266,12 @@ async function scanSemuaOlt(oltList, mac) {
             hasil = await cekRedamanHioso(olt, mac);
         }
 
-        if (hasil && hasil.error) hasilAkhir += `\n❌ *${olt.label}*: ${hasil.error}`;
-        else if (hasil) hasilAkhir += `\n✅ *${hasil.olt_name}*\n   📉 Redaman: *${hasil.redaman}*\n   📡 Status: ${hasil.status}`;
+        if (hasil && hasil.error) {
+            // Hanya tampilkan error jika memang gagal, tapi jangan hentikan loop
+            hasilAkhir += `\n❌ *${olt.label}*: ${hasil.error}`;
+        } else if (hasil) {
+            hasilAkhir += `\n✅ *${hasil.olt_name}*\n   📉 Redaman: *${hasil.redaman}*\n   📡 Status: ${hasil.status}`;
+        }
     }
     return hasilAkhir || '⚠️ ONU tidak ditemukan di OLT manapun pada cabang ini.';
 }
