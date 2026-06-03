@@ -19,7 +19,6 @@ async function cekRedamanHSAirpo(oltConfig, mac) {
             param: { name: username, key: key, value: value, captcha_v: "", captcha_f: "" }
         };
 
-        // Auto-Login
         const loginUrl = `http://${oltConfig.ip}:${oltConfig.port}/userlogin?form=login`;
         const loginRes = await axios.post(loginUrl, payload, {
             headers: { 'Content-Type': 'application/json;charset=UTF-8', 'x-token': 'null' },
@@ -33,7 +32,6 @@ async function cekRedamanHSAirpo(oltConfig, mac) {
         const token = loginRes.headers['x-token'];
         if (!token) throw new Error('Token tidak ditemukan setelah login.');
 
-        // Scan Port 1 - 16
         for (let port = 1; port <= 16; port++) {
             const url = `http://${oltConfig.ip}:${oltConfig.port}/onu_allow_list?port_id=${port}`;
             const response = await axios.get(url, { headers: { 'x-token': token }, timeout: 5000 });
@@ -65,7 +63,7 @@ async function cekRedamanHSAirpo(oltConfig, mac) {
 }
 
 // ==========================================
-// 2. FUNGSI CEK REDAMAN Hioso (Metode Puppeteer)
+// 2. FUNGSI CEK REDAMAN Hioso (Metode Puppeteer - FIXED)
 // ==========================================
 async function cekRedamanHioso(oltConfig, mac) {
     const browser = await puppeteer.launch({ 
@@ -79,9 +77,13 @@ async function cekRedamanHioso(oltConfig, mac) {
         const user = oltConfig.user || 'admin';
         const pass = oltConfig.pass || 'admin';
 
+        // 1. HTTP BASIC AUTH (Wajib ada di awal untuk Cibarola & Sukamelang 8Pon)
+        await page.authenticate({ username: user, password: pass });
+
+        // 2. Buka Halaman Utama
         await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 15000 });
 
-        // 1. Proses Login Form
+        // 3. Login Form 1
         const isLoginPage = await page.$('#a');
         if (isLoginPage) {
             await page.type('#a', user);
@@ -91,46 +93,58 @@ async function cekRedamanHioso(oltConfig, mac) {
         }
         await new Promise(r => setTimeout(r, 2000));
 
+        // 4. Login Form 2 (Double Login Bypass)
+        const isLogin2Page = await page.$('#a');
+        if (isLogin2Page) {
+            await page.type('#a', user);
+            await page.type('#b', pass);
+            await page.click('input[type="button"]');
+            await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 }).catch(() => {});
+        }
+        await new Promise(r => setTimeout(r, 2000));
+
         let targetFrame = page;
 
-        // 2. Navigasi ke Halaman All ONU
+        // 5. Navigasi Iframe (Khusus Cibarola & Sukamelang 8Pon)
         if (oltConfig.iframe) {
-            // Metode untuk OLT dengan Iframe (Cibarola, Sukamelang 8Pon)
             const leftFrame = page.frames().find(f => f.name() === 'leftFrame');
-            if (leftFrame) {
-                await leftFrame.evaluate(() => {
-                    const links = Array.from(document.querySelectorAll('a'));
-                    const allOnuLink = links.find(link => link.innerText.trim() === 'All ONU');
-                    if (allOnuLink) allOnuLink.click();
-                });
-                await new Promise(r => setTimeout(r, 4000));
-                
-                targetFrame = page.frames().find(f => f.name() === 'mainFrame') || page;
-                
-                // Paksa tampilkan 300 baris sekaligus
-                await targetFrame.evaluate(() => {
-                    if (typeof setNumPerPage === 'function') setNumPerPage(300);
-                }).catch(() => {});
-                await new Promise(r => setTimeout(r, 5000));
-            }
+            if (!leftFrame) throw new Error('leftFrame tidak ditemukan.');
+
+            await leftFrame.evaluate(() => {
+                const links = Array.from(document.querySelectorAll('a'));
+                const allOnuLink = links.find(link => link.innerText.trim() === 'All ONU');
+                if (allOnuLink) allOnuLink.click();
+            });
+
+            await new Promise(r => setTimeout(r, 4000));
+
+            targetFrame = page.frames().find(f => f.name() === 'mainFrame');
+            if (!targetFrame) throw new Error('mainFrame tidak ditemukan.');
+
+            // Trick: Paksa OLT menampilkan 300 baris sekaligus (Bypass Pagination)
+            await targetFrame.evaluate(() => {
+                if (typeof setNumPerPage === 'function') setNumPerPage(300);
+                else if (typeof OnPageSizeChange === 'function') OnPageSizeChange(300);
+            }).catch(() => {});
+
+            await new Promise(r => setTimeout(r, 5000)); // Tunggu tabel reload
         } else {
-            // Metode Langsung (Perum)
+            // Metode Langsung (Perum & Sukamelang 4Pon)
             await page.goto(`${baseUrl}/m/onu_all_onu.htm`, { waitUntil: 'networkidle2', timeout: 15000 });
             await targetFrame.waitForSelector('table', { timeout: 10000 });
         }
 
-        // 3. Ekstraksi Data Redaman dari Tabel
+        // 6. Ekstraksi Data Redaman (Regex: -XX.XX)
         const rxPowerResult = await targetFrame.evaluate((macToFind) => {
             const cleanTarget = macToFind.replace(/[:.-]/g, '').toLowerCase();
             const rows = Array.from(document.querySelectorAll('table tr'));
             
             for (let row of rows) {
-                const rowText = row.innerText.replace(/[:.-]/g, '').toLowerCase();
-                if (rowText.includes(cleanTarget)) {
-                    const cleanRowText = row.innerText.replace(/\s+/g, ' ').trim();
-                    // Regex untuk mencari angka minus desimal (contoh: -18.66)
+                const cleanRowText = row.innerText.replace(/[:.-]/g, '').toLowerCase();
+                if (cleanRowText.includes(cleanTarget)) {
+                    const rowTextClean = row.innerText.replace(/\s+/g, ' ').trim();
                     const rxPattern = /-\d+\.\d+/;
-                    const match = cleanRowText.match(rxPattern);
+                    const match = rowTextClean.match(rxPattern);
                     return match ? match[0] : 'Tidak Terdeteksi';
                 }
             }
@@ -146,7 +160,7 @@ async function cekRedamanHioso(oltConfig, mac) {
             };
         }
         
-        return null; // Tidak ditemukan di OLT ini
+        return null; // Tidak ditemukan
 
     } catch (error) {
         console.error(`[ERROR Hioso ${oltConfig.label}]:`, error.message);
