@@ -19,6 +19,7 @@ module.exports = {
                     port: 710,
                     user: 'root',
                     pass: 'admin'
+                    // method default: 'api'
                 }
             ]
         },
@@ -37,7 +38,7 @@ module.exports = {
                     port: 8422,
                     user: 'admin',
                     pass: 'admin',
-                    iframe: false // Metode langsung ke /m/onu_all_onu.htm
+                    iframe: false
                 }
             ]
         },
@@ -56,7 +57,7 @@ module.exports = {
                     port: 655,
                     user: 'admin',
                     pass: 'admin',
-                    iframe: true // Metode navigasi via leftFrame -> mainFrame
+                    iframe: true
                 },
                 {
                     type: 'HSAirpo',
@@ -64,13 +65,15 @@ module.exports = {
                     ip: '103.191.165.115',
                     port: 704,
                     user: 'admin',
-                    pass: 'admin'
+                    pass: 'admin',
+                    method: 'puppeteer', // <-- FLAG KHUSUS: Gunakan metode browser (file sempurna Anda)
+                    total_pon: 4        // <-- Jumlah port PON yang discan (pon1 - pon4)
                 }
             ]
         },
 
         // ==========================================
-        // 4. SUKAMELANG (LENGKAP: 3 OLT)
+        // 4. SUKAMELANG
         // ==========================================
         sukamelang: {
             label: 'Sukamelang',
@@ -83,16 +86,16 @@ module.exports = {
                     port: 680,
                     user: 'admin',
                     pass: 'admin',
-                    iframe: true // Metode navigasi via leftFrame -> mainFrame
+                    iframe: true
                 },
                 {
                     type: 'Hioso',
-                    label: 'Hioso 4Pon Sukamelang', // <-- INI YANG BARU DITAMBAHKAN
+                    label: 'Hioso 4Pon Sukamelang',
                     ip: '103.191.165.126',
                     port: 670,
                     user: 'admin',
                     pass: 'admin',
-                    iframe: false // Metode langsung ke /m/onu_all_onu.htm (sama seperti Perum)
+                    iframe: false
                 },
                 {
                     type: 'HSAirpo',
