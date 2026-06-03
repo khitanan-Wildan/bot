@@ -5,9 +5,13 @@ const puppeteer = require('puppeteer');
 
 // ==========================================
 // 1. HSairpo API (Panglejar & Sukamelang)
+// ATURAN: Hapus 1 karakter terakhir (panjang 16)
 // ==========================================
 async function cekRedamanHSAirpoAPI(oltConfig, mac) {
     try {
+        // POTONG 1 KARAKTER TERAKHIR (Panjang 16)
+        const searchMac = mac.substring(0, 16);
+
         const username = oltConfig.user || 'root';
         const password = oltConfig.pass || 'admin';
         const key = crypto.createHash('md5').update(`${username}:${password}`).digest('hex');
@@ -25,7 +29,12 @@ async function cekRedamanHSAirpoAPI(oltConfig, mac) {
             const res = await axios.get(`http://${oltConfig.ip}:${oltConfig.port}/onu_allow_list?port_id=${port}`, {
                 headers: { 'x-token': token }, timeout: 5000
             });
-            const found = (res.data.data || []).find(x => (x.macaddr || x.mac || '').toLowerCase().startsWith(mac.toLowerCase()));
+            
+            // Cari menggunakan searchMac yang sudah dipotong 1 karakter
+            const found = (res.data.data || []).find(x => 
+                (x.macaddr || x.mac || '').toLowerCase().startsWith(searchMac.toLowerCase())
+            );
+            
             if (found) {
                 let redaman = found.receive_power || 'N/A';
                 if (redaman !== 'N/A' && !String(redaman).toLowerCase().includes('dbm')) redaman = `${redaman} dBm`;
@@ -39,10 +48,11 @@ async function cekRedamanHSAirpoAPI(oltConfig, mac) {
 }
 
 // ==========================================
-// 2. HSairpo WEB (KHUSUS CIBAROLA - Format MAC 1111.1111.1111)
+// 2. HSairpo WEB (KHUSUS CIBAROLA)
+// ATURAN: MAC FULL tanpa dipotong, format jadi 1111.1111.1111
 // ==========================================
 async function cekRedamanHSAirpoWeb(oltConfig, mac) {
-    // 1. Format MAC menjadi 1111.1111.1111 (contoh: a031.db00.dbf1)
+    // FORMAT MAC FULL: Hapus semua tanda baca, lalu kelompokkan per 4 karakter
     const cleanMac = mac.replace(/[:.\-]/g, '').toLowerCase();
     const targetMac = cleanMac.match(/.{1,4}/g)?.join('.') || cleanMac;
 
@@ -111,6 +121,7 @@ async function cekRedamanHSAirpoWeb(oltConfig, mac) {
             await new Promise(r => setTimeout(r, 500));
 
             await page.$eval(usedSelector, el => el.value = '');
+            // KETIK MAC FULL YANG SUDAH DI-FORMAT (contoh: a031.db00.dbf1)
             await page.type(usedSelector, targetMac); 
 
             await page.evaluate(() => {
@@ -150,9 +161,13 @@ async function cekRedamanHSAirpoWeb(oltConfig, mac) {
 }
 
 // ==========================================
-// 3. Hioso (Cibarola, Perum, Sukamelang) - FRAME DETECTION DIPERBAIKI
+// 3. Hioso (Cibarola, Perum, Sukamelang)
+// ATURAN: Hapus 1 karakter terakhir (panjang 16)
 // ==========================================
 async function cekRedamanHioso(oltConfig, mac) {
+    // POTONG 1 KARAKTER TERAKHIR (Panjang 16)
+    const searchMac = mac.substring(0, 16);
+
     const browser = await puppeteer.launch({ 
         headless: 'new', 
         defaultViewport: null, 
@@ -185,7 +200,6 @@ async function cekRedamanHioso(oltConfig, mac) {
 
         let targetFrame = page;
         if (oltConfig.iframe) {
-            // PENCARIAN FRAME LEBIH PINTAR: Cari berdasarkan nama ATAU url yang mengandung 'left'
             let leftFrame = null;
             for (let i = 0; i < 5; i++) {
                 leftFrame = page.frames().find(f => 
@@ -198,7 +212,6 @@ async function cekRedamanHioso(oltConfig, mac) {
             }
 
             if (!leftFrame) {
-                // Fallback: Jika tetap tidak ketemu, gunakan page utama saja (mencegah crash)
                 console.warn(`[WARNING] leftFrame tidak ditemukan di ${oltConfig.label}, menggunakan halaman utama.`);
                 targetFrame = page;
             } else {
@@ -234,6 +247,7 @@ async function cekRedamanHioso(oltConfig, mac) {
             await targetFrame.waitForSelector('table', { timeout: 10000 });
         }
 
+        // Cari di tabel menggunakan searchMac yang sudah dipotong 1 karakter
         const rxPowerResult = await targetFrame.evaluate((macToFind) => {
             const cleanTarget = macToFind.replace(/[:.\-]/g, '').toLowerCase();
             for (let row of Array.from(document.querySelectorAll('table tr'))) {
@@ -243,9 +257,9 @@ async function cekRedamanHioso(oltConfig, mac) {
                 }
             }
             return null;
-        }, mac);
+        }, searchMac);
 
-        return rxPowerResult ? { olt_name: oltConfig.label, mac_onu: mac, redaman: `${rxPowerResult} dBm`, status: 'Online' } : null;
+        return rxPowerResult ? { olt_name: oltConfig.label, mac_onu: searchMac, redaman: `${rxPowerResult} dBm`, status: 'Online' } : null;
     } catch (error) {
         return { error: `Gagal: ${error.message}` };
     } finally {
@@ -267,7 +281,6 @@ async function scanSemuaOlt(oltList, mac) {
         }
 
         if (hasil && hasil.error) {
-            // Hanya tampilkan error jika memang gagal, tapi jangan hentikan loop
             hasilAkhir += `\n❌ *${olt.label}*: ${hasil.error}`;
         } else if (hasil) {
             hasilAkhir += `\n✅ *${hasil.olt_name}*\n   📉 Redaman: *${hasil.redaman}*\n   📡 Status: ${hasil.status}`;
