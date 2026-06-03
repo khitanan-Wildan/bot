@@ -1,4 +1,4 @@
-// index.js - RnBNET BOT (Final Production Ready)
+// index.js - RnBNET BOT (Final with Admin Whitelist)
 const path = require('path');
 const express = require('express');
 const qrcode = require('qrcode');
@@ -51,7 +51,22 @@ const client = new Client({
 });
 
 // ==========================================
-// 3. EVENT LISTENER WHATSAPP
+// 3. KEAMANAN: DAFTAR NOMOR ADMIN (WHITELIST)
+// ==========================================
+// Format: 62xxxxxxxxxx@c.us (tanpa + atau 0 di depan)
+const ADMIN_NUMBERS = [
+    '6283873625928@c.us',
+    '6283841418696@c.us',
+    '6289526607288@c.us',
+    '6287842861656@c.us'
+];
+
+function isAdmin(number) {
+    return ADMIN_NUMBERS.includes(number);
+}
+
+// ==========================================
+// 4. EVENT LISTENER WHATSAPP
 // ==========================================
 console.log('🤖 BOT STARTING...');
 
@@ -74,6 +89,8 @@ client.on('ready', () => {
     console.log('================================');
     console.log('🚀 BOT READY FOR RnBNET!');
     console.log('================================');
+    console.log(`👥 Admin terdaftar: ${ADMIN_NUMBERS.length} nomor`);
+    console.log('================================');
 });
 
 client.on('disconnected', (reason) => {
@@ -91,7 +108,7 @@ client.on('auth_failure', (msg) => {
 });
 
 // ==========================================
-// 4. HELPER: KONEKSI MIKROTIK (ANTI CRASH)
+// 5. HELPER: KONEKSI MIKROTIK (ANTI CRASH)
 // ==========================================
 async function connectMikrotik(serverKey) {
     const targetServer = config.servers[serverKey];
@@ -113,7 +130,6 @@ async function connectMikrotik(serverKey) {
         await api.connect();
         return { api, targetServer };
     } catch (err) {
-        // Tangkap error timeout agar TIDAK CRASH (UNCAUGHT)
         throw new Error(`Gagal konek ke MikroTik ${targetServer.label} (Port ${mtConfig.port}). Pastikan port API sudah diaktifkan.`);
     }
 }
@@ -139,7 +155,7 @@ async function getActiveUserFromMikrotik(api, username) {
 }
 
 // ==========================================
-// 5. MESSAGE HANDLER
+// 6. MESSAGE HANDLER
 // ==========================================
 client.on('message_create', async (msg) => {
     try {
@@ -147,7 +163,7 @@ client.on('message_create', async (msg) => {
         const args = text.split(/\s+/);
         const command = args[0]?.toLowerCase();
 
-        // PERINTAH PUBLIK
+        // PERINTAH PUBLIK (Bisa diakses semua orang)
         if (command === 'ping') {
             await msg.reply('pong 🏓');
             return;
@@ -158,13 +174,24 @@ client.on('message_create', async (msg) => {
                 `📡 *RnBNET BOT HIGH SPEED*\n\n` +
                 `🔍 *CEK REDAMAN:*\n\`!cek [mikrotik] [username]\`\n` +
                 `⚡ *AKTIVASI:*\n\`!aktifkan [mikrotik] [username]\`\n\n` +
-                `📍 *SERVER:* panglejar, perum, cibarola, sukamelang`
+                `📍 *SERVER:* panglejar, perum, cibarola, sukamelang\n\n` +
+                `⚠️ _Perintah !cek dan !aktifkan hanya untuk admin terdaftar_`
             );
             return;
         }
 
-        // PERINTAH TEKNISI / ADMIN
+        // PERINTAH ADMIN (Hanya bisa diakses admin terdaftar)
         if (['!cek', '!aktifkan'].includes(command)) {
+            // Cek whitelist admin
+            if (!isAdmin(msg.from)) {
+                await msg.reply(
+                    `🚫 *Akses Ditolak*\n\n` +
+                    `Anda tidak memiliki izin untuk menggunakan perintah ini.\n` +
+                    `Hubungi Iyann RnB Net jika merasa ini kesalahan.`
+                );
+                return;
+            }
+
             if (args.length < 3) {
                 await msg.reply(`❌ *Format Salah*\n\nGunakan: \`${command} [mikrotik] [username]\`\nContoh: \`${command} cibarola liacahyani\``);
                 return;
@@ -197,7 +224,7 @@ client.on('message_create', async (msg) => {
 });
 
 // ==========================================
-// 6. HANDLER: CEK REDAMAN
+// 7. HANDLER: CEK REDAMAN
 // ==========================================
 async function handleCekRedaman(msg, serverKey, username) {
     let api;
@@ -220,8 +247,7 @@ async function handleCekRedaman(msg, serverKey, username) {
             return;
         }
 
-        // ✅ PENTING: Kirim MAC mentah FULL TANPA dipotong di sini.
-        // Biarkan oltService.js yang mengatur pemotongan 1 karakter atau full MAC sesuai jenis OLT.
+        // Kirim MAC mentah FULL TANPA dipotong
         const mac = rawMac.trim().toLowerCase();
         
         await msg.reply(`📡 *MAC Ditemukan:*\n\`${mac}\`\n\n_Menyisir OLT di cabang ${targetServer.label}..._`);
@@ -245,7 +271,7 @@ async function handleCekRedaman(msg, serverKey, username) {
 }
 
 // ==========================================
-// 7. HANDLER: AKTIVASI (OPEN ISOLIR)
+// 8. HANDLER: AKTIVASI (OPEN ISOLIR)
 // ==========================================
 async function handleAktivasi(msg, serverKey, username) {
     let api;
@@ -286,7 +312,6 @@ async function handleAktivasi(msg, serverKey, username) {
             `🔒 *MAC Asli:* \`${rawMac}\`\n`;
 
         if (rawMac && rawMac !== 'Any') {
-            // ✅ PENTING: Kirim MAC mentah FULL TANPA dipotong di sini juga.
             const mac = rawMac.trim().toLowerCase();
             reportMessage += `✂️ *MAC OLT:* \`${mac}\`\n\n🔍 _Menyisir OLT otomatis..._`;
 
@@ -315,14 +340,14 @@ async function handleAktivasi(msg, serverKey, username) {
 }
 
 // ==========================================
-// 8. ERROR HANDLING GLOBAL (ANTI CRASH)
+// 9. ERROR HANDLING GLOBAL (ANTI CRASH)
 // ==========================================
 process.on('unhandledRejection', (err) => {
     console.error('❌ UNHANDLED REJECTION:', err);
 });
 
 process.on('uncaughtException', (err) => {
-    // Abaikan error timeout dari node-routeros agar tidak spam console / crash bot
+    // Abaikan error timeout dari node-routeros
     if (err.name === 'RosException' && err.message.includes('Timed out')) {
         return; 
     }
@@ -336,7 +361,7 @@ process.on('SIGINT', async () => {
 });
 
 // ==========================================
-// 9. INITIALIZE BOT
+// 10. INITIALIZE BOT
 // ==========================================
 client.initialize().catch(err => {
     console.error('❌ Gagal initialize bot:', err);
