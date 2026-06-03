@@ -120,13 +120,11 @@ async function cekRedamanHSAirpoCibarola(oltConfig, mac) {
 }
 
 // ==========================================
-// 3. Hioso (Puppeteer) - SEQUENTIAL, STABIL
+// 3. Hioso (Puppeteer) - FIXED: CIBAROLA leftFrame
 // ==========================================
 async function cekRedamanHioso(oltConfig, mac) {
-    console.log(`\n🔍 [${oltConfig.label}] Mulai cek (Puppeteer)...`);
-    
-    // POTONG 1 KARAKTER (panjang 16) - SESUAI SCRIPT ASLI
     const searchMac = mac.substring(0, 16);
+    console.log(`\n🔍 [${oltConfig.label}] Mulai cek (Puppeteer)...`);
     console.log(`   MAC dicari: ${searchMac}`);
 
     const browser = await puppeteer.launch({
@@ -136,8 +134,8 @@ async function cekRedamanHioso(oltConfig, mac) {
 
     try {
         const page = await browser.newPage();
-        page.setDefaultTimeout(15000);
-        page.setDefaultNavigationTimeout(15000);
+        page.setDefaultTimeout(20000);
+        page.setDefaultNavigationTimeout(20000);
 
         const baseUrl = `http://${oltConfig.ip}:${oltConfig.port}`;
         const user = oltConfig.user || 'admin';
@@ -147,46 +145,86 @@ async function cekRedamanHioso(oltConfig, mac) {
             // ==========================================
             // MODE A: CIBAROLA & 8PON SUKAMELANG
             // (HTTP Auth + Login 2x + Iframe)
-            // PERSIS SEPERTI SCRIPT ASLI
             // ==========================================
             console.log(`   Mode: Double Login + Iframe`);
             
+            // HTTP Basic Auth
             await page.authenticate({ username: user, password: pass });
-            await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 15000 });
+            
+            // Buka halaman utama - WAJIB networkidle2 karena iframe butuh full load
+            await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 20000 });
 
-            // Login 1
+            // Login Form 1
             if (await page.$('#a')) {
                 await page.type('#a', user);
                 await page.type('#b', pass);
                 await page.click('input[type="button"]');
-                await page.waitForNavigation({ waitUntil: 'networkidle0' }).catch(() => {});
+                await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {});
             }
             await new Promise(r => setTimeout(r, 2000));
 
-            // Login 2
+            // Login Form 2
             if (await page.$('#a')) {
                 await page.type('#a', user);
                 await page.type('#b', pass);
                 await page.click('input[type="button"]');
-                await page.waitForNavigation({ waitUntil: 'networkidle0' }).catch(() => {});
+                await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {});
             }
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, 3000));
 
-            // Navigasi Iframe - PERSIS SCRIPT ASLI
-            const leftFrame = page.frames().find(f => f.name() === 'leftFrame');
-            if (!leftFrame) throw new Error('leftFrame tidak ditemukan');
+            // 🔑 RETRY LOOP: Cari leftFrame hingga 10 detik
+            let leftFrame = null;
+            for (let attempt = 1; attempt <= 5; attempt++) {
+                const frames = page.frames();
+                console.log(`   [Attempt ${attempt}] Frames tersedia: ${frames.length}`);
+                
+                leftFrame = frames.find(f => f.name() === 'leftFrame');
+                
+                // Fallback: cari frame dengan nama mengandung 'left' atau URL mengandung 'menu'
+                if (!leftFrame) {
+                    leftFrame = frames.find(f => 
+                        (f.name() && f.name().toLowerCase().includes('left')) ||
+                        (f.url() && (f.url().includes('menu') || f.url().includes('left')))
+                    );
+                }
+                
+                if (leftFrame) {
+                    console.log(`   ✅ leftFrame ditemukan di attempt ${attempt}`);
+                    break;
+                }
+                
+                console.log(`   ⏳ Menunggu 2 detik...`);
+                await new Promise(r => setTimeout(r, 2000));
+            }
 
+            if (!leftFrame) {
+                // Debug: tampilkan semua frame untuk analisis
+                const allFrames = page.frames();
+                const frameInfo = allFrames.map(f => `name="${f.name()}" url="${f.url()}"`).join('\n      ');
+                throw new Error(`leftFrame tidak ditemukan setelah 10 detik.\n   Frame yang ada:\n      ${frameInfo}`);
+            }
+
+            // Klik "All ONU" di leftFrame
             await leftFrame.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a'));
                 const allOnuLink = links.find(link => link.innerText.trim() === 'All ONU');
                 if (allOnuLink) allOnuLink.click();
-            });
+            }).catch(err => console.log(`   ⚠️ Klik All ONU error: ${err.message}`));
+            
             await new Promise(r => setTimeout(r, 4000));
 
-            const mainFrame = page.frames().find(f => f.name() === 'mainFrame');
+            // Cari mainFrame
+            let mainFrame = page.frames().find(f => f.name() === 'mainFrame');
+            if (!mainFrame) {
+                mainFrame = page.frames().find(f => 
+                    (f.name() && f.name().toLowerCase().includes('main')) ||
+                    (f.url() && f.url().includes('onu'))
+                );
+            }
+            
             if (!mainFrame) throw new Error('mainFrame tidak ditemukan');
 
-            // Bypass pagination - PERSIS SCRIPT ASLI
+            // Bypass pagination
             await mainFrame.evaluate(() => {
                 if (typeof setNumPerPage === 'function') setNumPerPage(300);
                 else if (typeof OnPageSizeChange === 'function') OnPageSizeChange(300);
@@ -197,10 +235,10 @@ async function cekRedamanHioso(oltConfig, mac) {
                         sel.dispatchEvent(new Event('change'));
                     }
                 }
-            });
+            }).catch(() => {});
             await new Promise(r => setTimeout(r, 5000));
 
-            // Ekstraksi - PERSIS SCRIPT ASLI (regex tanpa spasi, hapus titik)
+            // Ekstraksi data - PERSIS SCRIPT ASLI
             const rxPowerResult = await mainFrame.evaluate((macToFind) => {
                 const cleanTarget = macToFind.replace(/[:.-]/g, '').toLowerCase();
                 const rows = Array.from(document.querySelectorAll('table tr'));
