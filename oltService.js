@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const puppeteer = require('puppeteer');
 
 // ==========================================
-// 1. HSairpo API (Panglejar & Sukamelang)
+// 1. HSairpo API (Panglejar & Sukamelang) - TIDAK DIUBAH
 // ==========================================
 async function cekRedamanHSAirpoAPI(oltConfig, mac) {
     try {
@@ -39,24 +39,23 @@ async function cekRedamanHSAirpoAPI(oltConfig, mac) {
 }
 
 // ==========================================
-// 2. HSairpo WEB (KHUSUS CIBAROLA - Format MAC 1111.1111.1111)
+// 2. HSairpo WEB (KHUSUS CIBAROLA - LOGIKA CMD YANG SUKSES)
 // ==========================================
 async function cekRedamanHSAirpoWeb(oltConfig, mac) {
-    // 1. FORMAT MAC MENJADI 1111.1111.1111 (Contoh: a031.db00.dbf1)
-    const cleanMac = mac.replace(/[:.\-]/g, '');
+    // 1. Format MAC menjadi 1111.1111.1111 (contoh: 2841.ecff.9a20)
+    const cleanMac = mac.replace(/[:.\-]/g, '').toLowerCase();
     const targetMac = cleanMac.match(/.{1,4}/g).join('.');
 
-    // 2. Launch Puppeteer dengan headless: 'new' & defaultViewport: null
-    const browser = await puppeteer.launch({ 
-        headless: 'new', 
-        defaultViewport: null, 
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
+    const browser = await puppeteer.launch({
+        headless: 'new', // Menghilangkan warning
+        defaultViewport: { width: 1280, height: 720 },
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     });
     const page = await browser.newPage();
     const baseUrl = `http://${oltConfig.ip}:${oltConfig.port}`;
 
     try {
-        await page.goto(`${baseUrl}/index.html`, { waitUntil: 'networkidle2', timeout: 15000 });
+        await page.goto(`${baseUrl}/index.html`, { waitUntil: 'networkidle2' });
         await new Promise(r => setTimeout(r, 3000));
 
         const inputs = await page.$$('input');
@@ -64,54 +63,63 @@ async function cekRedamanHSAirpoWeb(oltConfig, mac) {
             await inputs[0].click({ clickCount: 3 }); await inputs[0].type(oltConfig.user || 'admin');
             await inputs[1].click({ clickCount: 3 }); await inputs[1].type(oltConfig.pass || 'admin');
             await page.evaluate(() => {
-                const btns = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"]'));
-                const loginBtn = btns.find(b => (b.innerText || b.value || '').toLowerCase().includes('log') || (b.innerText || b.value || '').toLowerCase().includes('masuk'));
-                (loginBtn || btns[0])?.click();
+                const buttons = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"]'));
+                const loginBtn = buttons.find(b => {
+                    const txt = (b.innerText || b.value || '').toLowerCase().trim();
+                    return txt.includes('log') || txt.includes('sign') || txt.includes('masuk') || txt === '确定';
+                });
+                if (loginBtn) loginBtn.click();
+                else if (buttons.length > 0) buttons[0].click();
             });
-            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+            await page.waitForNavigation({ waitUntil: 'networkidle2' }).catch(() => {});
         }
         await new Promise(r => setTimeout(r, 3000));
 
-        await page.goto(`${baseUrl}/index.html#/pon/onu/optical`, { waitUntil: 'networkidle2', timeout: 15000 });
-        
-        const selectors = ['input[placeholder*="MAC" i]', 'input[placeholder*="mac" i]', 'input[placeholder*="ONU" i]', '.el-input__inner'];
+        await page.goto(`${baseUrl}/index.html#/pon/onu/optical`, { waitUntil: 'networkidle2' });
+        await new Promise(r => setTimeout(r, 4000)); // Jeda agar Vue.js render sempurna
+
+        const possibleSelectors = ['input[placeholder*="MAC" i]', 'input[placeholder*="mac" i]', 'input[placeholder*="ONU" i]', '.el-input__inner'];
         let searchInput = null;
-        for (const sel of selectors) {
+        let usedSelector = '';
+        
+        for (const selector of possibleSelectors) {
             try {
-                searchInput = await page.waitForSelector(sel, { timeout: 5000 });
-                if (searchInput) break;
+                searchInput = await page.waitForSelector(selector, { timeout: 5000 });
+                usedSelector = selector;
+                break;
             } catch (e) {}
         }
         if (!searchInput) throw new Error('Kolom pencarian MAC tidak ditemukan.');
 
         let rxPowerResult = null;
-        for (let i = 1; i <= (oltConfig.total_pon || 4); i++) {
+        const totalPonPorts = oltConfig.total_pon || 4;
+
+        for (let i = 1; i <= totalPonPorts; i++) {
             const currentPon = `pon${i}`;
-            
+
             await page.evaluate(() => {
-                const dd = document.querySelector('.el-input__inner') || document.querySelector('input[readonly]');
-                if (dd) dd.click();
+                const dropdownInput = document.querySelector('.el-input__inner') || document.querySelector('input[readonly]');
+                if (dropdownInput) dropdownInput.click();
             });
             await new Promise(r => setTimeout(r, 800));
 
             await page.evaluate((ponName) => {
                 const items = Array.from(document.querySelectorAll('.el-select-dropdown__item, li'));
-                const target = items.find(el => el.innerText.trim().toLowerCase() === ponName);
-                if (target) target.click();
+                const targetItem = items.find(el => el.innerText.trim().toLowerCase() === ponName);
+                if (targetItem) targetItem.click();
             }, currentPon);
-            await new Promise(r => setTimeout(r, 800));
+            await new Promise(r => setTimeout(r, 500));
 
-            await page.$eval(selectors[0], el => el.value = '');
-            // 3. KETIK MAC YANG SUDAH DI-FORMAT (1111.1111.1111)
-            await page.type(selectors[0], targetMac);
+            await page.$eval(usedSelector, el => el.value = '');
+            await page.type(usedSelector, targetMac); // Ketik MAC format 1111.1111.1111
 
             await page.evaluate(() => {
-                const icon = document.querySelector('input[placeholder*="MAC" i]')?.nextElementSibling;
-                if (icon) icon.click();
+                const searchIcon = document.querySelector('input[placeholder*="MAC" i]')?.nextElementSibling;
+                if (searchIcon) searchIcon.click();
                 else {
                     const btns = Array.from(document.querySelectorAll('button, i, span'));
-                    const sBtn = btns.find(b => b.className && b.className.includes('search'));
-                    if (sBtn) sBtn.click();
+                    const searchBtn = btns.find(b => b.className && b.className.includes('search'));
+                    if (searchBtn) searchBtn.click();
                 }
             });
             await new Promise(r => setTimeout(r, 2500));
@@ -142,10 +150,9 @@ async function cekRedamanHSAirpoWeb(oltConfig, mac) {
 }
 
 // ==========================================
-// 3. Hioso (Cibarola, Perum, Sukamelang) - FIX leftFrame
+// 3. Hioso (Cibarola, Perum, Sukamelang) - TIDAK DIUBAH (SUDAH SUKSES)
 // ==========================================
 async function cekRedamanHioso(oltConfig, mac) {
-    // Launch dengan headless: 'new' & defaultViewport: null
     const browser = await puppeteer.launch({ 
         headless: 'new', 
         defaultViewport: null, 
@@ -178,17 +185,13 @@ async function cekRedamanHioso(oltConfig, mac) {
 
         let targetFrame = page;
         if (oltConfig.iframe) {
-            // RETRY LOGIC: Tunggu hingga 10 detik untuk menemukan leftFrame
             let leftFrame = null;
             for (let i = 0; i < 5; i++) {
                 leftFrame = page.frames().find(f => f.name() === 'leftFrame');
                 if (leftFrame) break;
                 await new Promise(r => setTimeout(r, 2000));
             }
-
-            if (!leftFrame) {
-                throw new Error(`leftFrame tidak ditemukan. Frame: [${page.frames().map(f => f.name() || f.url()).join(', ')}]`);
-            }
+            if (!leftFrame) throw new Error('leftFrame tidak ditemukan.');
 
             await leftFrame.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a'));
