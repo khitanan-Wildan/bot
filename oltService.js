@@ -42,7 +42,7 @@ async function cekRedamanHSAirpoAPI(oltConfig, mac) {
 // 2. HSairpo WEB (Khusus Cibarola)
 // ==========================================
 async function cekRedamanHSAirpoWeb(oltConfig, mac) {
-    const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] });
+    const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] });
     const page = await browser.newPage();
     const baseUrl = `http://${oltConfig.ip}:${oltConfig.port}`;
 
