@@ -137,7 +137,8 @@ async function handleCekRedaman(msg, serverKey, username) {
             return;
         }
 
-        const mac = rawMac.trim().toLowerCase().substring(0, 16);
+        // Kirim MAC utuh (tanpa dipotong) agar bisa diformat ulang di oltService.js
+const mac = rawMac.trim().toLowerCase(); 
         await msg.reply(`📡 MAC: \`${mac}\`\n_Menyisir OLT..._`);
 
         const hasilOlt = await scanSemuaOlt(targetServer.olts, mac);
@@ -176,7 +177,7 @@ async function handleAktivasi(msg, serverKey, username) {
         let report = `✨ *Aktivasi Sukses*\n\n✅ Status: BERHASIL\n👤 ${username}\n🛜 ${paket}\n💻 ${targetServer.label}\n🌐 ${ip}\n🔒 MAC: \`${rawMac}\`\n`;
 
         if (rawMac && rawMac !== 'Any') {
-            const mac = rawMac.trim().toLowerCase().substring(0, 16);
+            const mac = rawMac.trim().toLowerCase(); 
             report += `✂️ MAC OLT: \`${mac}\`\n\n🔍 _Menyisir OLT..._`;
             await msg.reply(report);
             
@@ -195,6 +196,10 @@ async function handleAktivasi(msg, serverKey, username) {
 }
 
 process.on('unhandledRejection', err => console.error('❌ UNHANDLED:', err));
-process.on('uncaughtException', err => console.error('❌ UNCAUGHT:', err));
+process.on('uncaughtException', err => {
+    // Abaikan error timeout dari node-routeros agar tidak spam console / crash
+    if (err.name === 'RosException' && err.message.includes('Timed out')) return;
+    console.error('❌ UNCAUGHT:', err);
+});
 
 client.initialize().catch(console.error);
