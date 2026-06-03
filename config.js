@@ -47,7 +47,7 @@ module.exports = {
                     port: 8422,
                     user: 'admin',
                     pass: 'admin',
-                    iframe: false
+                    iframe: false // Single Login
                 }
             ]
         },
@@ -71,7 +71,7 @@ module.exports = {
                     port: 655,
                     user: 'admin',
                     pass: 'admin',
-                    iframe: true
+                    iframe: true // Double Login + Iframe
                 },
                 {
                     type: 'HSAirpo',
@@ -80,7 +80,7 @@ module.exports = {
                     port: 704,
                     user: 'admin',
                     pass: 'admin',
-                    method: 'cibarola',
+                    method: 'cibarola', // Axios API Khusus Cibarola
                     total_pon: 4
                 }
             ]
@@ -105,7 +105,7 @@ module.exports = {
                     port: 680,
                     user: 'admin',
                     pass: 'admin',
-                    iframe: true
+                    iframe: true // Double Login + Iframe
                 },
                 {
                     type: 'Hioso',
@@ -114,7 +114,7 @@ module.exports = {
                     port: 670,
                     user: 'admin',
                     pass: 'admin',
-                    iframe: false
+                    iframe: false // Single Login
                 },
                 {
                     type: 'HSAirpo',
