@@ -4,11 +4,12 @@ const crypto = require('crypto');
 const puppeteer = require('puppeteer');
 
 // ==========================================
-// 1. HSairpo API (Panglejar & Sukamelang) - TIDAK DIUBAH
+// 1. HSairpo API (Panglejar & Sukamelang)
+// ATURAN: Potong 1 karakter MAC (substring 0, 16)
 // ==========================================
 async function cekRedamanHSAirpoAPI(oltConfig, mac) {
     try {
-        const searchMac = mac.substring(0, 16); // POTONG 1 KARAKTER
+        const searchMac = mac.substring(0, 16); 
         const username = oltConfig.user || 'root';
         const password = oltConfig.pass || 'admin';
         const key = crypto.createHash('md5').update(`${username}:${password}`).digest('hex');
@@ -40,12 +41,13 @@ async function cekRedamanHSAirpoAPI(oltConfig, mac) {
 }
 
 // ==========================================
-// 2. HSairpo CIBAROLA - TIDAK DIUBAH (Paling Cepat)
+// 2. HSairpo CIBAROLA (Axios Super Cepat)
+// ATURAN: MAC Full (tanpa dipotong)
 // ==========================================
 async function cekRedamanHSAirpoCibarola(oltConfig, mac) {
     try {
         const cleanTargetMac = mac.replace(/[:.\-]/g, '').toLowerCase();
-        const matchTarget = cleanTargetMac.substring(0, 11); // MAC Full dicocokkan 11 karakter depan
+        const matchTarget = cleanTargetMac.substring(0, 11); 
 
         const passwordBase64 = Buffer.from(oltConfig.pass || 'admin').toString('base64');
         const loginRes = await axios.post(
@@ -106,9 +108,10 @@ async function cekRedamanHSAirpoCibarola(oltConfig, mac) {
 
 // ==========================================
 // 3. Hioso (Perum, 4Pon, 8Pon) - OPTIMIZED CEPAT
+// ATURAN: Potong 1 karakter MAC (substring 0, 16)
 // ==========================================
 async function cekRedamanHioso(oltConfig, mac) {
-    const searchMac = mac.substring(0, 16); // POTONG 1 KARAKTER SESUAI PERMINTAAN
+    const searchMac = mac.substring(0, 16); 
     const browser = await puppeteer.launch({
         headless: 'new',
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
@@ -116,7 +119,6 @@ async function cekRedamanHioso(oltConfig, mac) {
     
     try {
         const page = await browser.newPage();
-        // Set timeout ketat agar tidak macet & cepat
         page.setDefaultTimeout(8000);
         page.setDefaultNavigationTimeout(8000);
 
@@ -126,7 +128,7 @@ async function cekRedamanHioso(oltConfig, mac) {
         let targetFrame = page;
 
         if (oltConfig.iframe) {
-            // === LOGIKA 8 PON SUKAMELANG (Double Login + Iframe) ===
+            // === LOGIKA 8 PON SUKAMELANG & CIBAROLA (Double Login + Iframe) ===
             await page.authenticate({ username: user, password: pass }).catch(() => {});
             await page.goto(baseUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
 
@@ -137,7 +139,7 @@ async function cekRedamanHioso(oltConfig, mac) {
                 await page.click('input[type="button"]').catch(()=>{});
                 await page.waitForNavigation({ waitUntil: 'domcontentloaded' }).catch(() => {});
             }
-            await new Promise(r => setTimeout(r, 800)); // Jeda singkat
+            await new Promise(r => setTimeout(r, 800));
 
             // Login 2
             if (await page.$('#a')) {
@@ -161,7 +163,6 @@ async function cekRedamanHioso(oltConfig, mac) {
 
             targetFrame = page.frames().find(f => f.name() === 'mainFrame' || f.name()?.toLowerCase().includes('main')) || page;
             
-            // Bypass Pagination
             await targetFrame.evaluate(() => {
                 if (typeof setNumPerPage === 'function') setNumPerPage(300);
             }).catch(() => {});
@@ -180,7 +181,7 @@ async function cekRedamanHioso(oltConfig, mac) {
             }
             await new Promise(r => setTimeout(r, 800));
 
-            // Langsung ke halaman ONU (Tanpa Iframe)
+            // Langsung ke halaman ONU
             await page.goto(`${baseUrl}/m/onu_all_onu.htm`, { waitUntil: 'domcontentloaded' }).catch(() => {});
             targetFrame = page; 
         }
@@ -206,7 +207,6 @@ async function cekRedamanHioso(oltConfig, mac) {
     } catch (error) {
         return { error: `Timeout/Gagal` };
     } finally {
-        // WAJIB: Tutup browser agar memori lega & bot cepat
         await browser.close().catch(() => {});
     }
 }
@@ -215,7 +215,6 @@ async function cekRedamanHioso(oltConfig, mac) {
 // 4. SCAN PARALLEL (Agar Bot Sangat Cepat)
 // ==========================================
 async function scanSemuaOlt(oltList, mac) {
-    // Jalankan semua OLT secara PARALLEL (Bersamaan)
     const promises = oltList.map(async (olt) => {
         let hasil = null;
         
@@ -229,7 +228,7 @@ async function scanSemuaOlt(oltList, mac) {
         if (hasil && !hasil.error) {
             return `\n✅ *${hasil.olt_name}*\n   📉 Redaman: *${hasil.redaman}*\n   📡 Status: ${hasil.status}`;
         } else if (hasil && hasil.error) {
-            return `\n️ *${olt.label}*: ${hasil.error}`;
+            return `\n⚠️ *${olt.label}*: ${hasil.error}`;
         }
         return null;
     });
