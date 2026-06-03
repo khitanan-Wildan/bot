@@ -163,7 +163,7 @@ client.on('message_create', async (msg) => {
             return;
         }
 
-        // PERINTAH ADMIN/TEKNISI
+        // PERINTAH TEKNISI / ADMIN
         if (['!cek', '!aktifkan'].includes(command)) {
             if (args.length < 3) {
                 await msg.reply(`❌ *Format Salah*\n\nGunakan: \`${command} [mikrotik] [username]\`\nContoh: \`${command} cibarola liacahyani\``);
@@ -220,7 +220,8 @@ async function handleCekRedaman(msg, serverKey, username) {
             return;
         }
 
-        // ✅ PENTING: Kirim MAC utuh TANPA dipotong. Biarkan oltService.js yang mengatur formatnya per OLT.
+        // ✅ PENTING: Kirim MAC mentah FULL TANPA dipotong di sini.
+        // Biarkan oltService.js yang mengatur pemotongan 1 karakter atau full MAC sesuai jenis OLT.
         const mac = rawMac.trim().toLowerCase();
         
         await msg.reply(`📡 *MAC Ditemukan:*\n\`${mac}\`\n\n_Menyisir OLT di cabang ${targetServer.label}..._`);
@@ -285,7 +286,7 @@ async function handleAktivasi(msg, serverKey, username) {
             `🔒 *MAC Asli:* \`${rawMac}\`\n`;
 
         if (rawMac && rawMac !== 'Any') {
-            // ✅ PENTING: Kirim MAC utuh TANPA dipotong.
+            // ✅ PENTING: Kirim MAC mentah FULL TANPA dipotong di sini juga.
             const mac = rawMac.trim().toLowerCase();
             reportMessage += `✂️ *MAC OLT:* \`${mac}\`\n\n🔍 _Menyisir OLT otomatis..._`;
 
