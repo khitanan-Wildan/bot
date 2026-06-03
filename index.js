@@ -1,4 +1,4 @@
-// index.js - RnBNET BOT (Final with Admin Whitelist)
+// index.js - RnBNET BOT (Final with Smart Admin Whitelist)
 const path = require('path');
 const express = require('express');
 const qrcode = require('qrcode');
@@ -21,7 +21,7 @@ app.get('/', (req, res) => {
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
-    console.log(`🌐 WEB SERVER RUNNING ON PORT ${PORT}`);
+    console.log(` WEB SERVER RUNNING ON PORT ${PORT}`);
 });
 
 // ==========================================
@@ -53,16 +53,43 @@ const client = new Client({
 // ==========================================
 // 3. KEAMANAN: DAFTAR NOMOR ADMIN (WHITELIST)
 // ==========================================
-// Format: 62xxxxxxxxxx@c.us (tanpa + atau 0 di depan)
+// Format: Cukup nomor tanpa kode negara, tanpa 0 di depan, tanpa @c.us
 const ADMIN_NUMBERS = [
-    '6283873625928@c.us',
-    '6283841418696@c.us',
-    '6289526607288@c.us',
-    '6287842861656@c.us'
+    '6283873625928',
+    '6283841418696',
+    '6289526607288',
+    '6287842861656'
 ];
 
-function isAdmin(number) {
-    return ADMIN_NUMBERS.includes(number);
+// ==========================================
+// FUNGSI PINTAR: Normalisasi & Cek Admin
+// ==========================================
+function normalizeNumber(rawNumber) {
+    if (!rawNumber) return null;
+    // Hapus semua karakter kecuali angka
+    let num = rawNumber.replace(/\D/g, '');
+    
+    // Jika dimulai dengan 0, ganti dengan 62 (Indonesia)
+    if (num.startsWith('0')) {
+        num = '62' + num.substring(1);
+    }
+    // Jika tidak dimulai dengan 62 dan bukan nomor internasional lain, tambahkan 62
+    else if (!num.startsWith('62') && !num.startsWith('+')) {
+        num = '62' + num;
+    }
+    
+    return num;
+}
+
+function isAdmin(msg) {
+    // Ambil nomor dari msg (dari chat pribadi atau dari author di grup)
+    const rawNumber = msg.from || msg.author;
+    const normalized = normalizeNumber(rawNumber);
+    
+    // Log untuk debugging - agar kita tahu format nomor yang masuk
+    console.log(`\n📱 [ADMIN CHECK] Raw: ${rawNumber} | Normalized: ${normalized}`);
+    
+    return ADMIN_NUMBERS.includes(normalized);
 }
 
 // ==========================================
@@ -74,7 +101,7 @@ client.on('qr', async (qr) => {
     try {
         await qrcode.toFile(path.join(__dirname, 'qr.png'), qr);
         console.log('================================');
-        console.log('📱 SCAN QR CODE -> qr.png');
+        console.log(' SCAN QR CODE -> qr.png');
         console.log('================================');
     } catch (err) {
         console.error('❌ Error generate QR:', err.message);
@@ -87,9 +114,12 @@ client.on('authenticated', () => {
 
 client.on('ready', () => {
     console.log('================================');
-    console.log('🚀 BOT READY FOR RnBNET!');
+    console.log(' BOT READY FOR RnBNET!');
     console.log('================================');
-    console.log(`👥 Admin terdaftar: ${ADMIN_NUMBERS.length} nomor`);
+    console.log(` Admin terdaftar: ${ADMIN_NUMBERS.length} nomor`);
+    ADMIN_NUMBERS.forEach((num, i) => {
+        console.log(`   ${i + 1}. ${num}`);
+    });
     console.log('================================');
 });
 
@@ -163,7 +193,7 @@ client.on('message_create', async (msg) => {
         const args = text.split(/\s+/);
         const command = args[0]?.toLowerCase();
 
-        // PERINTAH PUBLIK (Bisa diakses semua orang)
+        // === PERINTAH PUBLIK (Bisa diakses semua orang) ===
         if (command === 'ping') {
             await msg.reply('pong 🏓');
             return;
@@ -180,17 +210,21 @@ client.on('message_create', async (msg) => {
             return;
         }
 
-        // PERINTAH ADMIN (Hanya bisa diakses admin terdaftar)
+        // === PERINTAH ADMIN (Hanya bisa diakses admin terdaftar) ===
         if (['!cek', '!aktifkan'].includes(command)) {
-            // Cek whitelist admin
-            if (!isAdmin(msg.from)) {
+            
+            // Cek whitelist admin (PINTAR: support chat pribadi & grup)
+            if (!isAdmin(msg)) {
                 await msg.reply(
                     `🚫 *Akses Ditolak*\n\n` +
-                    `Anda tidak memiliki izin untuk menggunakan perintah ini.\n` +
-                    `Hubungi Iyann RnB Net jika merasa ini kesalahan.`
+                    `Nomor Anda tidak terdaftar sebagai admin.\n\n` +
+                    `_Hubungi Iyann RnBNET untuk didaftarkan._`
                 );
+                console.log(`🚫 [DITOLAK] ${msg.from} mencoba akses perintah ${command}`);
                 return;
             }
+
+            console.log(`✅ [DIIZINKAN] ${msg.from} menjalankan ${command}`);
 
             if (args.length < 3) {
                 await msg.reply(`❌ *Format Salah*\n\nGunakan: \`${command} [mikrotik] [username]\`\nContoh: \`${command} cibarola liacahyani\``);
@@ -214,7 +248,7 @@ client.on('message_create', async (msg) => {
         }
 
     } catch (err) {
-        console.error('❌ Error di message handler:', err);
+        console.error(' Error di message handler:', err);
         try {
             await msg.reply(`❌ *Terjadi Kesalahan*\n\n${err.message}`);
         } catch (e) {
@@ -247,7 +281,6 @@ async function handleCekRedaman(msg, serverKey, username) {
             return;
         }
 
-        // Kirim MAC mentah FULL TANPA dipotong
         const mac = rawMac.trim().toLowerCase();
         
         await msg.reply(`📡 *MAC Ditemukan:*\n\`${mac}\`\n\n_Menyisir OLT di cabang ${targetServer.label}..._`);
@@ -257,7 +290,7 @@ async function handleCekRedaman(msg, serverKey, username) {
         await msg.reply(
             `📊 *Hasil Cek Redaman OLT*\n\n` +
             `👤 *Pelanggan:* ${username}\n` +
-            `💻 *Server:* ${targetServer.label}\n` +
+            ` *Server:* ${targetServer.label}\n` +
             `🔒 *MAC:* \`${mac}\`\n\n` +
             `${hasilOlt}`
         );
