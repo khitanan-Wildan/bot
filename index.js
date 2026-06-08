@@ -1,9 +1,10 @@
-// index.js - RnBNET BOT (Updated: + !lastip feature)
+// index.js - RnBNET BOT (Public Access - No Whitelist)
 const path = require('path');
 const express = require('express');
 const qrcode = require('qrcode');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const RouterOSAPI = require('node-routeros').RouterOSAPI;
+
 const config = require('./config');
 const { scanSemuaOlt } = require('./oltService');
 
@@ -54,6 +55,7 @@ client.on('disconnected', (reason) => {
 async function connectMikrotik(serverKey) {
     const targetServer = config.servers[serverKey];
     if (!targetServer) throw new Error(`Server "${serverKey}" tidak ditemukan`);
+    
     const api = new RouterOSAPI({
         host: targetServer.mikrotik.host,
         port: targetServer.mikrotik.port,
@@ -61,7 +63,7 @@ async function connectMikrotik(serverKey) {
         password: targetServer.mikrotik.pass,
         timeout: 15
     });
-
+    
     try {
         await api.connect();
         return { api, targetServer };
@@ -98,7 +100,6 @@ client.on('message_create', async (msg) => {
             await msg.reply(
                 `📡 *RnBNET BOT HIGH SPEED*\n\n` +
                 `🔍 *CEK REDAMAN:*\n\`!cek [mikrotik] [username]\`\n` +
-                `🌐 *CEK IP TERTINGGI:*\n\`!lastip [mikrotik]\`\n` +
                 `⚡ *AKTIVASI:*\n\`!aktifkan [mikrotik] [username]\`\n\n` +
                 `📍 *SERVER:* panglejar, perum, cibarola, sukamelang\n\n` +
                 `✅ _Bot ini terbuka untuk umum_`
@@ -106,25 +107,9 @@ client.on('message_create', async (msg) => {
             return;
         }
 
-        // Perintah !lastip
-        if (command === '!lastip') {
-            if (args.length < 2) {
-                await msg.reply(`❌ *Format Salah*\n\nGunakan: \`!lastip [mikrotik]\`\nContoh: \`!lastip cibarola\``);
-                return;
-            }
-            const serverKey = args[1].toLowerCase();
-            if (!config.servers[serverKey]) {
-                const serverList = Object.keys(config.servers).join(', ');
-                await msg.reply(`❌ *Nama MikroTik Salah!*\n\nPilihan yang tersedia:\n• ${serverList}`);
-                return;
-            }
-            console.log(`\n📨 [REQUEST] Dari: ${msg.from} | Perintah: !lastip ${serverKey}`);
-            await handleLastIp(msg, serverKey);
-            return;
-        }
-
-        // Perintah !cek dan !aktifkan
+        // Perintah !cek dan !aktifkan (BISA DIAKSES SIAPA SAJA)
         if (['!cek', '!aktifkan'].includes(command)) {
+            
             if (args.length < 3) {
                 await msg.reply(`❌ *Format Salah*\n\nGunakan: \`${command} [mikrotik] [username]\`\nContoh: \`${command} cibarola liacahyani\``);
                 return;
@@ -139,6 +124,7 @@ client.on('message_create', async (msg) => {
                 return;
             }
 
+            // Log untuk monitoring (opsional)
             console.log(`\n📨 [REQUEST] Dari: ${msg.from} | Perintah: ${command} ${serverKey} ${username}`);
 
             if (command === '!cek') await handleCekRedaman(msg, serverKey, username);
@@ -173,7 +159,7 @@ async function handleCekRedaman(msg, serverKey, username) {
         }
 
         const mac = rawMac.trim().toLowerCase();
-        await msg.reply(`📡 *MAC Ditemukan:*\n\`${mac}\`\n\n_Mencari di Semua OLT ${targetServer.label}..._`);
+        await msg.reply(`📡 *MAC Ditemukan:*\n\`${mac}\`\n\n_Menyisir OLT di cabang ${targetServer.label}..._`);
 
         const hasilOlt = await scanSemuaOlt(targetServer.olts, mac);
         
@@ -251,72 +237,7 @@ async function handleAktivasi(msg, serverKey, username) {
 }
 
 // ==========================================
-// 8. HANDLER !LASTIP (BARU)
-// ==========================================
-async function handleLastIp(msg, serverKey) {
-    let api;
-    try {
-        const { api: mikrotikApi, targetServer } = await connectMikrotik(serverKey);
-        api = mikrotikApi;
-
-        await msg.reply(`🔍 Mencari IP Remote tertinggi di *${targetServer.label}*...`);
-
-        // Mengambil data PPP Secret (Response 2)
-        const secrets = await api.write('/ppp/secret/print');
-        
-        // Filter user yang punya remote-address valid (bukan dynamic/kosong)
-        const validSecrets = secrets.filter(s => 
-            s.name && 
-            s['disabled'] !== 'yes' && 
-            s['remote-address'] && 
-            !['0.0.0.0', 'dynamic', ''].includes(s['remote-address'].toLowerCase())
-        );
-
-        if (validSecrets.length === 0) {
-            await msg.reply(`⚠️ Tidak ada user dengan Remote Address statis/valid di ${targetServer.label}.`);
-            return;
-        }
-
-        // Helper: Ubah string IP menjadi angka untuk perbandingan matematis
-        const ipToNum = (ip) => {
-            const cleanIp = ip.split('/')[0]; // Hapus subnet mask jika ada (misal: 192.168.5.200/32)
-            const parts = cleanIp.split('.').map(Number);
-            if (parts.length !== 4) return 0;
-            return (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3];
-        };
-
-        let highestUser = null;
-        let highestNum = -1;
-
-        // Cari user dengan angka IP tertinggi
-        for (const s of validSecrets) {
-            const num = ipToNum(s['remote-address']);
-            if (num > highestNum) {
-                highestNum = num;
-                highestUser = s;
-            }
-        }
-
-        if (highestUser) {
-            await msg.reply(
-                `🏆 *IP Remote Terakhir (Tertinggi)*\n\n` +
-                `👤 *Nama Pelanggan:* ${highestUser.name}\n` +
-                `🌐 *Local Address:* ${highestUser['local-address'] || 'Any'}\n` +
-                `🌍 *Remote Address:* ${highestUser['remote-address']}\n` +
-                `💻 *Server:* ${targetServer.label}`
-            );
-        } else {
-            await msg.reply(`❌ Gagal menemukan IP tertinggi.`);
-        }
-    } catch (err) {
-        await msg.reply(`❌ *Gagal Cek Last IP*\n\n${err.message}`);
-    } finally {
-        try { if (api) await api.close(); } catch (e) {}
-    }
-}
-
-// ==========================================
-// 9. ERROR HANDLING
+// 8. ERROR HANDLING
 // ==========================================
 process.on('unhandledRejection', err => console.error('❌ UNHANDLED:', err));
 process.on('uncaughtException', err => {
